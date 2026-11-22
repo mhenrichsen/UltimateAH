@@ -1,0 +1,24 @@
+## Interface: 16001, 120100, 120105
+## Title: AuctionLedger
+## Notes: Tracks every auction house buy and sale across all your characters, and scans the AH for current prices.
+## Author: AuctionLedger
+## Version: 2.2.0
+## SavedVariables: AuctionLedgerDB
+## IconTexture: Interface\Icons\INV_Misc_Coin_02
+## X-Category: Auction/Economy
+
+ApiData.lua
+Core.lua
+Dev.lua
+Tracker.lua
+Scanner.lua
+Value.lua
+Deals.lua
+Guild.lua
+Watch.lua
+Sell.lua
+Mail.lua
+Api.lua
+Widgets.lua
+UI.lua
+Tabs.lua

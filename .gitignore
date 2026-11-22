@@ -1,0 +1,15 @@
+# API keys and local scan state: never commit these
+blizzard_api.json
+api_state/
+
+# local scratch: in-game screenshots, notes, machine-specific helpers
+/*.png
+/*.jpg
+deadline.txt
+wowctl.py
+renders/overview.png
+renders/AHPanel_crop.png
+
+__pycache__/
+*.pyc
+*.zip
