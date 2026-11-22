@@ -13,8 +13,8 @@ The addon reads that file at login or /reload.
     python ah_api.py status     what the last scan stored
 
 A server scan (ah_server.py, see the README) scans every Forever auction house around the clock and
-hands out one data file per house. Put its address in blizzard_api.json as "server". Without
-credentials, detect / auto / fetch then use those files. With credentials the scan is your own, and the
+hands out one data file per house; the project runs one for the EU region (SERVER below). Without
+credentials, detect / auto / fetch use those files. With credentials the scan is your own, and the
 server's files add what a PC that is not always on cannot have: a price point for every day and a
 sold-per-day figure from every hour.
 
@@ -53,9 +53,9 @@ MIN_COVER = 3000           # seconds of compared scans needed before sale rates 
                            # snapshots are a few seconds short of 3600 s apart, so not a full hour
 # the least time an auction in each bracket still has left; one that vanished sooner was
 # bought or cancelled, it cannot have run out
-# the address of a running server scan (ah_server.py serve), normally set as "server" in
-# blizzard_api.json; empty = none
-SERVER = ""
+# the project's server scan (ah_server.py serve; EU region). "server" in blizzard_api.json overrides
+# it: another address to use your own, "" to use none
+SERVER = "https://uah.46-224-200-140.sslip.io"
 MIN_LEFT = {"SHORT": 0, "MEDIUM": 1800, "LONG": 7200, "VERY_LONG": 43200}
 TL_CODE = {"SHORT": 0, "MEDIUM": 1, "LONG": 2, "VERY_LONG": 3}
 TL_MIN = [0, 1800, 7200, 43200]
@@ -566,7 +566,7 @@ def cmd_fetch(cfg, out=None):
     if not house:
         raise ApiError("no auction house chosen yet: run  python ah_api.py detect")
     if not server_base(cfg):
-        raise ApiError('no server scan configured: set "server" in blizzard_api.json to its address')
+        raise ApiError('the server scan is switched off: remove "server": "" from blizzard_api.json')
     last = read_state("last.json", None)
     entry = next((h for h in (server_index(cfg) or {}).get("houses", [])
                   if h.get("region") == region and h.get("house") == house), None)
@@ -613,7 +613,7 @@ def cmd_detect_server(cfg, faction=None):
     if len(game) < 50:
         raise ApiError("too little in-game data to compare with: do a Full Scan in the game, /reload, and retry")
     if not server_base(cfg):
-        raise ApiError('no API key and no server scan configured: set "server" in blizzard_api.json')
+        raise ApiError('no API key, and the server scan is switched off ("server": "" in blizzard_api.json)')
     idx = server_index(cfg)
     if not idx or not idx.get("houses"):
         raise ApiError("the server's list of auction houses is not reachable")

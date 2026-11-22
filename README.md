@@ -48,23 +48,31 @@ The addon is also on CurseForge as a beta: https://www.curseforge.com/wow/addons
 An addon cannot reach the internet, so a small Python script does it from outside the game. There
 are two ways to use it.
 
-### Without an API key: a server scan's data
+### Without an API key (EU)
 
-A [server scan](#the-server-scan) scans every Forever auction house of a region, Alliance and Horde,
-around the clock and hands out one data file per house. If you (or someone you trust) run one:
+The project runs a [server scan](#the-server-scan) for the EU region: every Forever auction house,
+Alliance and Horde, every hour, around the clock. The script downloads your house's file from it,
+so there is nothing to sign up for.
 
-1. Copy `blizzard_api.example.json` to `blizzard_api.json` and set `"server"` to its address.
-   Then do a Full Scan in the game once and `/reload`.
-2. `python ah_api.py detect` finds which auction house is yours by comparing the server's files with
-   your scan. `python ah_api.py fetch` downloads your house's file into the addon folder.
+1. Do a Full Scan in the game once, then `/reload`.
+2. `python ah_api.py auto`. The first run finds which auction house is yours by comparing the
+   server's files with your scan, then downloads your house's file into the addon folder.
 3. Schedule `python ah_api.py auto` hourly, for example with Windows Task Scheduler.
 4. The addon loads the data at login or `/reload`. `/uah api` shows what it loaded.
 
+If the game is not in the default folder, copy `blizzard_api.example.json` to `blizzard_api.json`
+and set `wow_dir`.
+
+The script only downloads files: it sends nothing about you, your account or your characters, and
+the server keeps no request log. The address is `SERVER` at the top of `ah_api.py`. The service is
+a hobby project and comes with no promise to stay up; `"server": "<address>"` in
+`blizzard_api.json` points the script at a server scan of your own, and `"server": ""` switches it
+off.
+
 ### With your own API key
 
-Your PC scans your auction house itself, which also tells the addon which auctions are yours. With
-`"server"` set, the server's file still adds the price history and sale rates of the hours your PC
-was off.
+Your PC scans your auction house itself, which also tells the addon which auctions are yours. The
+server's file still adds the price history and sale rates of the hours your PC was off.
 
 1. Create an API client at https://develop.battle.net/access/clients.
 2. Copy `blizzard_api.example.json` to `blizzard_api.json` and fill in the client ID and secret.
