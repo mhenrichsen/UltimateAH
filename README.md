@@ -16,7 +16,7 @@ layout code with sample data. Fonts and icons differ a little from the game.
   checked in the game.
 - The 2.x work has only been tested outside the game so far: the new look, the Watch, Sell and
   Settings pages, posting auctions from the Sell page, and loading API scan data. It is covered
-  by 139 automated checks against a mocked game API and by the offline renders, but it has not
+  by 168 automated checks against a mocked game API and by the offline renders, but it has not
   been run in the live client yet. Treat 2.x as a beta.
 - The API scan script and the server scan have been run against Blizzard's real API (EU).
 
@@ -26,7 +26,7 @@ layout code with sample data. Fonts and icons differ a little from the game.
 |---|---|
 | `UltimateAH/` | The addon. Copy this folder into `_forever_\Interface\AddOns`. Its [README](UltimateAH/README.md) describes every page and command. |
 | `ah_api.py` | Auto scans: downloads your auction house from Blizzard's Game Data API every hour and writes `ApiData.lua` for the addon. |
-| `ah_server.py` | Server scan: every Forever auction house, both factions, every hour, into a SQLite database. Runs as the GitHub job in `.github/workflows/ah-scan.yml`. |
+| `ah_server.py` | Server scan: every Forever auction house, both factions, every hour, into a SQLite database. Runs as a small Docker service (`Dockerfile`). |
 | `deploy.py` | Copies `UltimateAH/` into the game folder. |
 | `sync_accounts.py` | Merges the addon's saved data across WoW accounts on one PC. |
 | `test_*.py`, `tests_v2.py` | Tests: the addon's Lua runs in [lupa](https://pypi.org/project/lupa/) against a mocked WoW API; the scan scripts run against a fake Blizzard API. |
@@ -106,9 +106,7 @@ docker build -t ultimate-ah-scan .
 docker run -d -p 8080:8080 -v ah-data:/data -e BLIZZARD_CLIENT_ID=... -e BLIZZARD_CLIENT_SECRET=... ultimate-ah-scan
 ```
 
-Without Docker, `python ah_server.py run --dir <folder>` once an hour does the same scan, and
-`.github/workflows/ah-scan.yml` is a GitHub job that does it and stores the files on a release
-(manual by default; it needs the two values as repository secrets).
+Without Docker, `python ah_server.py run --dir <folder>` once an hour does the same scan.
 
 Blizzard's API terms allow keeping API data for 30 days at most, so the database drops anything
 older. Auction data: Blizzard Entertainment, through the Battle.net Game Data API.

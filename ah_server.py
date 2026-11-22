@@ -1,7 +1,7 @@
 """Ultimate AH server scan: every Forever auction house, every hour, into a small database.
 
 The PC script (ah_api.py) only scans while that PC is on. This one is meant for a machine that is
-always there (the hourly GitHub job in .github/workflows/ah-scan.yml, or any server with Python):
+always there (the Docker image, or any server with Python):
 
     python ah_server.py probe --dir DIR     has Blizzard published new data? (a few small requests)
     python ah_server.py run   --dir DIR     scan every house, update the database, write the data files
@@ -247,10 +247,6 @@ def cmd_probe(folder, opener=None, cfg=None):
                 changed = True
                 break
     log("new data: %s" % ("yes" if changed else "no"))
-    out = os.environ.get("GITHUB_OUTPUT")
-    if out:
-        with open(out, "a", encoding="utf-8") as f:
-            f.write("changed=%s\n" % ("true" if changed else "false"))
     return changed
 
 
