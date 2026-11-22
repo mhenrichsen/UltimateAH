@@ -24,11 +24,14 @@ Blizzard's API terms allow keeping API data for 30 days at most, so nothing olde
 database. Auction data: Blizzard Entertainment, through the Battle.net Game Data API.
 """
 import argparse
+import array
 import collections
 import email.utils
 import gzip
 import http.server
+import itertools
 import json
+import math
 import os
 import re
 import shutil
@@ -36,6 +39,7 @@ import sqlite3
 import sys
 import threading
 import time
+import zlib
 
 import ah_api
 from ah_api import ApiError, log
@@ -63,6 +67,15 @@ CREATE TABLE IF NOT EXISTS cover (house INTEGER NOT NULL, day INTEGER NOT NULL, 
   PRIMARY KEY (house, day)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS scan (house INTEGER NOT NULL, t INTEGER NOT NULL, auctions INTEGER, items INTEGER,
   sold_units INTEGER, PRIMARY KEY (house, t)) WITHOUT ROWID;
+-- prices and sales by hour of the day (UTC), one row per item. v = 96 float32: for each hour the sum of
+-- log(price / the item's weekly mean), the number of prices, the units sold, and the sum of the squared
+-- logs. Everything fades by PROFILE_DECAY per day; day = the last day the row was touched
+CREATE TABLE IF NOT EXISTS hours (house INTEGER NOT NULL, key TEXT NOT NULL, day INTEGER NOT NULL, v BLOB NOT NULL,
+  PRIMARY KEY (house, key)) WITHOUT ROWID;
+-- the forecast's two weights per house, fitted once a day on what the prices of the last weeks did:
+-- n checks, err = its mean error, naive = the error of "the price stays the same" (both in log price)
+CREATE TABLE IF NOT EXISTS model (house INTEGER PRIMARY KEY, day INTEGER, a REAL, b REAL, n INTEGER,
+  err REAL, naive REAL, ok INTEGER);
 """
 
 
@@ -99,12 +112,35 @@ def write_gz(path, data):
 
 
 def build_items(db, hk, day, table):
-    """the addon's item rows from today's prices plus the database's history and sale counts"""
-    hist = collections.defaultdict(list)
-    for key, dd, s, n, mn in db.execute(
-            "SELECT key, day, mkt_sum, n, min FROM daily WHERE house = ? AND day > ? AND n > 0 ORDER BY key, day",
-            (hk, day - ah_api.HISTORY_DAYS)):
-        hist[key] += [dd, ah_api.sig3(int(round(s / n))), ah_api.sig3(mn)]
+    """the addon's item rows from today's prices plus the database's history, sale counts and price
+    patterns -> (items, hours of compared scans behind the sale rates, the house's forecast check)"""
+    hist, ins, samples = {}, {}, []
+    row = db.execute("SELECT day, a, b, n, err, naive, ok FROM model WHERE house = ?", (hk,)).fetchone()
+    model = (row[1], row[2]) if row and row[6] else None
+    refit = not row or row[0] < day                      # once a day
+    profs = dict(db.execute("SELECT key, v FROM hours WHERE house = ?", (hk,)))
+    cur = db.execute("SELECT key, day, mkt_sum, n, min FROM daily WHERE house = ? AND day > ? AND n > 0 ORDER BY key, day",
+                     (hk, day - KEEP_DAYS))
+    for key, rows in itertools.groupby(cur, key=lambda r: r[0]):
+        days, logs, h = [], [], []
+        for _, dd, s, n, mn in rows:
+            if dd > day - ah_api.HISTORY_DAYS:
+                h += [dd, ah_api.sig3(int(round(s / n))), ah_api.sig3(mn)]
+            if s > 0:
+                days.append(dd)
+                logs.append(math.log(s / n))
+        if h:
+            hist[key] = h
+        if len(days) >= INSIGHT_DAYS:
+            p = table.get(key)
+            if p and p["mkt"] > 0:
+                ins[key] = insight(days, logs, day, p["mkt"], profs.get(key), model)
+            if refit and zlib.crc32(key.encode("utf-8")) % FIT_SAMPLE == 0:
+                samples.extend(fit_samples(days, logs))
+    if refit:
+        row = (day,) + fit(samples)
+        db.execute("INSERT OR REPLACE INTO model (house, day, a, b, n, err, naive, ok) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (hk,) + row)
+    check = {"checks": row[3], "error": round(row[4], 4), "unchanged": round(row[5], 4), "on": bool(row[6])}
     since = day - ah_api.SOLD_DAYS
     cover = db.execute("SELECT COALESCE(SUM(seconds), 0) FROM cover WHERE house = ? AND day > ?", (hk, since)).fetchone()[0]
     rates = cover >= ah_api.MIN_COVER
@@ -114,13 +150,217 @@ def build_items(db, hk, day, table):
                                (hk, since)))
     items = {}
     for key, p in table.items():
-        items[key] = dict(p, h=hist.get(key, []), sold=(sold.get(key, 0) / cover * 86400) if rates else None)
+        items[key] = dict(p, h=hist.get(key, []), sold=(sold.get(key, 0) / cover * 86400) if rates else None,
+                          ins=ins.get(key))
     for key, units in sold.items():                     # sold out completely: the sale rate is still worth keeping
         if key not in items:
             items[key] = {"min": 0, "mkt": 0, "qty": 0, "num": 0, "top": 0, "other": 0, "h": [],
                           "sold": units / cover * 86400}
     # the addon reads sale rates only when soldHours >= 1, so this must agree with `rates`
-    return items, (max(1.0, round(cover / 3600.0, 1)) if rates else 0.0)
+    return items, (max(1.0, round(cover / 3600.0, 1)) if rates else 0.0), check
+
+
+# ---------------------------------------------------------------------------
+# price patterns: what up to 30 days of history say about one item
+# ---------------------------------------------------------------------------
+INSIGHT_DAYS = 7          # days with a price before an item gets price patterns
+PROFILE_MIN = 5           # auctions an item needs before its prices by hour of the day are followed
+PROFILE_DECAY = 0.9       # per day: the hour-of-day figures fade, a month-old hour weighs 4%
+HORIZON = 7               # the forecast looks this many days ahead
+DRIFT = sum(0.8 ** j for j in range(1, HORIZON + 1))     # a trend is expected to fade out
+FIT_SAMPLE = 5            # every n-th item checks the forecast against what really happened
+FIT_MIN = 300             # such checks needed before a house gets forecasts at all
+KENDALL = {5: 8, 6: 11, 7: 13, 8: 16}                    # agreeing minus disagreeing pairs needed (p < 0.05)
+
+
+def median(xs):
+    s = sorted(xs)
+    n = len(s)
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2.0
+
+
+def weekday(day):
+    return (day + 3) % 7                                  # 0 = Monday; day 0 (1 January 1970) was a Thursday
+
+
+def pct(x):
+    return int(round((math.exp(x) - 1) * 100))
+
+
+def trend(days, logs, upto):
+    """the direction of the week before `upto` -> change of the log price per day (the median slope
+    between all pairs of days), 0.0 when the days do not agree on a direction, None when fewer than
+    five of the last eight days have a price"""
+    pts = [(d, x) for d, x in zip(days, logs) if upto - 8 < d <= upto]
+    if len(pts) < 5:
+        return None
+    slopes, agree = [], 0
+    for i in range(len(pts)):
+        for j in range(i + 1, len(pts)):
+            s = (pts[j][1] - pts[i][1]) / (pts[j][0] - pts[i][0])
+            slopes.append(s)
+            agree += (s > 0) - (s < 0)
+    if abs(agree) < KENDALL[len(pts)]:
+        return 0.0
+    return median(slopes)
+
+
+def weekday_effect(days, logs):
+    """-> [cheapest weekday, percent, dearest weekday, percent]; -1 where no weekday stands out.
+    Each day is compared with the median of the week around it. A weekday counts when it was on the
+    same side at least four times and its distance is large against the item's day-to-day noise."""
+    idx = dict(zip(days, logs))
+    by, resid = {}, []
+    for d, x in idx.items():
+        around = [idx[y] for y in range(d - 3, d + 4) if y in idx]
+        if len(around) >= 5:
+            r = x - median(around)
+            by.setdefault(weekday(d), []).append(r)
+            resid.append(r)
+    out = [-1, 0, -1, 0]
+    if len(resid) < 14:
+        return out
+    noise = 1.4826 * median([abs(r) for r in resid])
+    lo = hi = None
+    for wd, xs in by.items():
+        if len(xs) < 4:
+            continue
+        m = median(xs)
+        if abs(m) * math.sqrt(len(xs)) < 3.6 * noise:
+            continue
+        if max(xs) < 0 and (lo is None or m < lo[1]):
+            lo = (wd, m)
+        if min(xs) > 0 and (hi is None or m > hi[1]):
+            hi = (wd, m)
+    if lo and pct(lo[1]) <= -3:
+        out[0:2] = [lo[0], pct(lo[1])]
+    if hi and pct(hi[1]) >= 3:
+        out[2:4] = [hi[0], pct(hi[1])]
+    return out
+
+
+def hour_effect(v):
+    """-> [cheapest hour, dearest hour, spread in percent, hour most units sell]; hours in UTC, -1 = none.
+    v: the item's row of the hours table"""
+    out = [-1, -1, 0, -1]
+    if not v:
+        return out
+    a = array.array("f")
+    a.frombytes(v)
+    mean = [a[h] / a[24 + h] if a[24 + h] >= 4 else None for h in range(24)]       # 4 = five days of that hour
+    known = [h for h in range(24) if mean[h] is not None]
+    if len(known) >= 20:
+        base = sum(mean[h] for h in known) / len(known)
+        m = [mean[h] - base if mean[h] is not None else 0.0 for h in range(24)]
+        sm = [(m[h - 1] + m[h] + m[(h + 1) % 24]) / 3 for h in range(24)]           # neighbouring hours count too
+        var = sum(max(a[72 + h] / a[24 + h] - mean[h] ** 2, 0.0) for h in known) / len(known)
+        weight = sum(a[24 + h] for h in known) / len(known)
+        noise = math.sqrt(var / (3 * weight))                                      # of one smoothed hour
+        lo = min(range(24), key=sm.__getitem__)
+        hi = max(range(24), key=sm.__getitem__)
+        # the extremes of 24 noisy hours lie about three noise widths apart by chance alone
+        if sm[hi] - sm[lo] >= 4.5 * noise and pct(sm[hi] - sm[lo]) >= 4:
+            out[0:3] = [lo, hi, pct(sm[hi] - sm[lo])]
+    q = a[48:72]
+    total = sum(q)
+    if total >= 20 and sum(1 for x in q if x > 0) >= 8:
+        sm = [(q[h - 1] + q[h] + q[(h + 1) % 24]) / 3 for h in range(24)]
+        peak = max(range(24), key=sm.__getitem__)
+        if sm[peak] >= 1.5 * total / 24:
+            out[3] = peak
+    return out
+
+
+def features(days, logs, upto):
+    """what the forecast looks at on day `upto` -> (level of the last three days, the week's trend
+    carried forward, distance of the month's median from that level), or None with too little history"""
+    seen = [x for d, x in zip(days, logs) if upto - KEEP_DAYS < d <= upto]
+    recent = [x for d, x in zip(days, logs) if upto - 3 < d <= upto]
+    if len(seen) < INSIGHT_DAYS or not recent:
+        return None
+    level = median(recent)
+    return level, (trend(days, logs, upto) or 0.0) * DRIFT, median(seen) - level
+
+
+def fit_samples(days, logs):
+    """every day of the history that has a price HORIZON days later: (trend, reversion, what happened)"""
+    idx = dict(zip(days, logs))
+    out = []
+    for d in days:
+        later = idx.get(d + HORIZON)
+        f = features(days, logs, d) if later is not None else None
+        if f:
+            out.append((f[1], f[2], later - f[0]))
+    return out
+
+
+def fit(samples):
+    """least squares for  change = a * trend + b * reversion  -> (a, b, n, error, error of "the price
+    stays the same", ok). ok only when the forecast was the better of the two on these samples."""
+    n = len(samples)
+    if n < FIT_MIN:
+        return 0.0, 0.0, n, 0.0, 0.0, 0
+    s11 = sum(x1 * x1 for x1, x2, y in samples)
+    s22 = sum(x2 * x2 for x1, x2, y in samples)
+    s12 = sum(x1 * x2 for x1, x2, y in samples)
+    s1y = sum(x1 * y for x1, x2, y in samples)
+    s2y = sum(x2 * y for x1, x2, y in samples)
+    det = s11 * s22 - s12 * s12
+    a = b = 0.0
+    if det > 1e-12:
+        a, b = (s1y * s22 - s2y * s12) / det, (s2y * s11 - s1y * s12) / det
+    elif s22 > 1e-12:
+        b = s2y / s22
+    a, b = min(max(a, 0.0), 1.5), min(max(b, 0.0), 1.0)
+    err = sum(abs(y - a * x1 - b * x2) for x1, x2, y in samples) / n
+    naive = sum(abs(y) for x1, x2, y in samples) / n
+    return a, b, n, err, naive, int((a > 0 or b > 0) and err <= 0.97 * naive)
+
+
+def insight(days, logs, day, price, prof, model):
+    """the INS_FIELDS numbers of one item. days/logs: its daily prices (log), price: today's market price"""
+    now = math.log(price)
+    pos = int(round(100.0 * (sum(1 for x in logs if x < now) + 0.5 * sum(1 for x in logs if x == now)) / len(logs)))
+    tr = trend(days, logs, day)
+    in7 = 0
+    f = features(days, logs, day) if model else None
+    if f:
+        guess = f[0] + model[0] * f[1] + model[1] * f[2]
+        guess = min(max(guess, min(logs) - 0.2), max(logs) + 0.2)
+        in7 = ah_api.sig3(int(round(math.exp(guess))))
+    return [len(days), pos, 9999 if tr is None else int(round((math.exp(tr) - 1) * 1000))] + \
+        weekday_effect(days, logs) + hour_effect(prof) + [in7]
+
+
+def update_hours(db, hk, day, hour, table, sold):
+    """add this scan to the items' prices and sales by hour of the day"""
+    ref = dict(db.execute("SELECT key, SUM(mkt_sum) * 1.0 / SUM(n) FROM daily WHERE house = ? AND day > ? AND n > 0 GROUP BY key",
+                          (hk, day - 7)))
+    old = {key: (d, v) for key, d, v in db.execute("SELECT key, day, v FROM hours WHERE house = ?", (hk,))}
+    rows = []
+    for key, p in table.items():
+        have = old.get(key)
+        if not have and p["num"] < PROFILE_MIN:
+            continue
+        a = array.array("f")
+        if have:
+            a.frombytes(have[1])
+            if have[0] < day:                             # a new day: everything before fades
+                k = PROFILE_DECAY ** (day - have[0])
+                a = array.array("f", [x * k for x in a])
+        else:
+            a.extend([0.0] * 96)
+        base = ref.get(key)
+        if base and p["mkt"] > 0:
+            r = math.log(p["mkt"] / base)
+            a[hour] += r
+            a[24 + hour] += 1
+            a[72 + hour] += r * r
+        if key in sold:
+            a[48 + hour] += sold[key][0]
+        rows.append((hk, key, day, a.tobytes()))
+    db.executemany("INSERT OR REPLACE INTO hours (house, key, day, v) VALUES (?, ?, ?, ?)", rows)
+    db.execute("DELETE FROM hours WHERE house = ? AND day <= ?", (hk, day - KEEP_DAYS))
 
 
 def scan_house(api, db, folder, h, now=None, force=False):
@@ -142,7 +382,7 @@ def scan_house(api, db, folder, h, now=None, force=False):
     hk = house_key(db, region, h)
     table = ah_api.price_table(aucs)
 
-    n_sold = 0
+    n_sold, sold = 0, {}
     if prev and prev.get("auctions"):
         dt = t - prev["t"]
         if 0 < dt <= ah_api.MAX_GAP:
@@ -159,6 +399,7 @@ def scan_house(api, db, folder, h, now=None, force=False):
         "ON CONFLICT (house, day, key) DO UPDATE SET mkt_sum = mkt_sum + excluded.mkt_sum, n = n + 1, "
         "min = CASE WHEN min IS NULL OR excluded.min < min THEN excluded.min ELSE min END, qty = excluded.qty",
         [(hk, day, key, p["mkt"], p["min"], p["qty"]) for key, p in table.items()])
+    update_hours(db, hk, day, int(t % 86400 // 3600), table, sold)
     for tbl in ("daily", "cover"):
         db.execute("DELETE FROM %s WHERE house = ? AND day <= ?" % tbl, (hk, day - KEEP_DAYS))
     db.execute("DELETE FROM scan WHERE house = ? AND t <= ?", (hk, t - KEEP_DAYS * 86400))
@@ -168,9 +409,11 @@ def scan_house(api, db, folder, h, now=None, force=False):
     db.execute("UPDATE house SET ruleset = ?, faction = ?, name = ?, t = ?, modified = ?, auctions = ?, items = ? WHERE hk = ?",
                (RULESET, faction, snap.get("name") or h.get("name"), t, snap.get("modified"), len(aucs), len(table), hk))
 
-    items, sold_hours = build_items(db, hk, day, table)
+    items, sold_hours, check = build_items(db, hk, day, table)
+    n_days = db.execute("SELECT COUNT(DISTINCT t / 86400) FROM scan WHERE house = ?", (hk,)).fetchone()[0]
+    n_ins = sum(1 for it in items.values() if it.get("ins"))
     meta = collections.OrderedDict(v=1, t=t, region=region, house=hid, faction=faction,
-                                   auctions=len(aucs), soldHours=sold_hours)
+                                   auctions=len(aucs), soldHours=sold_hours, insDays=n_days)
     lua = os.path.join(folder, name + ".lua")
     ah_api.write_lua(lua, meta, items)
     with open(lua, "rb") as src, gzip.open(lua + ".gz.tmp", "wb", compresslevel=6) as dst:
@@ -180,11 +423,14 @@ def scan_house(api, db, folder, h, now=None, force=False):
     write_gz(state, {"t": t, "modified": snap.get("modified"), "auctions": aucs,
                      "prices": {k: {"mkt": v["mkt"]} for k, v in table.items()}})
     db.commit()
-    log("house %s %s: %d auctions, %d items, %d units sold since the last scan, sale rates from %.1f h" % (
-        name, faction, len(aucs), len(table), n_sold, sold_hours))
+    log("house %s %s: %d auctions, %d items, %d units sold since the last scan, sale rates from %.1f h; "
+        "%d day(s) of history, price patterns for %d items, forecast %s" % (
+            name, faction, len(aucs), len(table), n_sold, sold_hours, n_days, n_ins,
+            ("on" if check["on"] else "off") + (" (error %.1f%% against %.1f%% for an unchanged price, %d checks)" % (
+                check["error"] * 100, check["unchanged"] * 100, check["checks"]) if check["checks"] >= FIT_MIN else "")))
     return {"region": region, "house": hid, "ruleset": RULESET, "faction": faction, "t": t,
             "modified": snap.get("modified"), "auctions": len(aucs), "items": len(table),
-            "soldHours": sold_hours, "file": name + ".lua.gz"}
+            "soldHours": sold_hours, "days": n_days, "patterns": n_ins, "forecast": check, "file": name + ".lua.gz"}
 
 
 def read_index(folder):

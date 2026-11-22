@@ -1,5 +1,6 @@
 """Offline tests for the API auto scan: ah_api.py against a fake Blizzard API, then the addon's
 import of the file it writes (Api.lua in lupa with the mocked WoW API of test_tracker.py)."""
+import collections
 import io
 import json
 import os
@@ -272,6 +273,62 @@ check("import: the same scan is not loaded twice", G.IMPORT[1] is False and G.IM
 lua.execute("UltimateAH_ApiData.t = UltimateAH_ApiData.t + 1; UltimateAH_ApiData.faction = 'Horde'; IMPORT = { UltimateAH.Api:Import() }")
 check("import: data of the other faction is refused", G.IMPORT[1] is False, list(G.IMPORT.values()))
 check("import: sold text", (lua.eval('UltimateAH.Api.SoldText(2880)'), lua.eval('UltimateAH.Api.SoldText(2.44)')) == ("2880", "2.4"))
+
+# 6b. price patterns: written by the script, loaded and worded by the addon
+T2 = T1 + 7200
+WD = ((T2 + 60) // 86400 + 3) % 7                         # the weekday (UTC, 0 = Monday) the addon will think it is
+DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+row = {"min": 150, "mkt": 160, "qty": 10, "num": 2, "top": 0, "other": 0, "sold": 5, "h": []}
+OUTP = os.path.join(tmp, "ApiDataPatterns.lua")
+ah_api.write_lua(OUTP, collections.OrderedDict(v=1, t=T2, region="eu", house=113, auctions=3, soldHours=1, insDays=30), {
+    "4306": dict(row, ins=[30, 95, 25, (WD + 5) % 7, -8, (WD + 2) % 7, 12, 6, 18, 22, 19, 17500]),
+    "2589": dict(row, ins=[9, 50, 9999, -1, 0, -1, 0, -1, -1, 0, -1, 0]),
+    "3577": dict(row, ins=[30, 96, 14, -1, 0, -1, 0, -1, -1, 0, -1, 0]),
+    "2770": dict(row, ins=[12, 40, 0, -1, 0, -1, 0, 6, 18, 9, -1, 0]),
+    "7005": dict(row),
+})
+pm, pi, pp = ah_api.parse_file(open(OUTP, encoding="utf-8").read())
+check("patterns: the file keeps them apart from the items", len(pi) == 5 and len(pp) == 4 and pp["4306"][2] == 25 and pm["insDays"] == 30, (len(pi), len(pp)))
+check("patterns: parse_data still gives only the items", ah_api.parse_data(open(OUTP, encoding="utf-8").read())[1] == pi)
+lua.execute("""
+NOW = %d + 60
+date = function(f) return f == "!%%H" and "10" or "12" end          -- a clock two hours ahead of UTC
+PRINTS = {}
+""" % T2)
+lua.execute(open(OUTP, encoding="utf-8").read())
+lua.execute("""
+IMPORT = { UltimateAH.Api:Import() }
+RUNTIMERS()
+P = UltimateAH.db.prices[UltimateAH:Scope()]
+""")
+p = G.P
+check("patterns: loaded into the price entries", G.IMPORT[1] is True and p["4306"].ins[3] == 25 and p["4306"].insT == T2 and p["7005"].ins is None,
+      list(G.IMPORT.values()))
+check("patterns: the scan status knows the days of history", lua.eval('UltimateAH.db.scans[UltimateAH:Scope()].api.insDays') == 30)
+ins = lua.eval('UltimateAH.Api.Insight(P["4306"])')
+check("patterns: fields by name", ins.days == 30 and ins.pos == 95 and ins.trend == 25 and ins.hrHi == 18 and ins.in7 == 17500, dict(ins))
+check("patterns: an unknown trend is nil", lua.eval('UltimateAH.Api.Insight(P["2589"]).trend') is None and lua.eval('UltimateAH.Api.Trend(P["2589"])') is None)
+check("patterns: trend text", ("+2.5%" in lua.eval('UltimateAH.Api.TrendText(25)'), "-1.5%" in lua.eval('UltimateAH.Api.TrendText(-15)'),
+                               "steady" in lua.eval('UltimateAH.Api.TrendText(4)')) == (True, True, True))
+lines = [(l[1], l[2].replace("|r", "")) for l in lua.eval('UltimateAH.Api.InsightLines(P["4306"])').values()]
+check("patterns: four tooltip lines for an item with everything", [l[0] for l in lines] == ["Trend", "Usually", "By hour", "In 7 days"], lines)
+check("patterns: trend and range in one line", lines[0][1] == "+2.5% a day, high for the month", lines[0])
+check("patterns: weekdays by name with their percent",
+      lines[1][1] == "cheapest %s (-8%%), dearest %s (+12%%)" % (DAYS[(WD + 5) % 7][:3], DAYS[(WD + 2) % 7][:3]), lines[1])
+check("patterns: hours are shown on the player's clock", lines[2][1] == "cheapest ~08:00, dearest ~20:00, sells most ~21:00", lines[2])
+check("patterns: the forecast is a price", lines[3][1].startswith("~") and "75" in lines[3][1], lines[3])
+check("patterns: nine days of history say little", len(list(lua.eval('UltimateAH.Api.InsightLines(P["2589"])').values())) == 0)
+adv = lua.eval('{ UltimateAH.Api.SellAdvice(P["4306"]) }')
+check("sell hint: a dearer weekday within three days", (adv[1], adv[2]) == ("usually 12%% higher on %s" % DAYS[(WD + 2) % 7], "gold"), list(adv.values()))
+adv = lua.eval('{ UltimateAH.Api.SellAdvice(P["3577"]) }')
+check("sell hint: high and still rising is a good moment", (adv[1], adv[2]) == ("high for the month, still rising", "green"), list(adv.values()))
+adv = lua.eval('{ UltimateAH.Api.SellAdvice(P["2770"]) }')
+check("sell hint: otherwise the dearest hour", (adv[1], adv[2]) == ("usually dearest around 20:00", "muted"), list(adv.values()))
+check("sell hint: nothing to say, nothing said", lua.eval('UltimateAH.Api.SellAdvice(P["2589"])') is None and lua.eval('UltimateAH.Api.SellAdvice(P["7005"])') is None)
+lua.execute("NOW = NOW + 4 * 86400")
+check("patterns: older than three days they are not shown", lua.eval('UltimateAH.Api.Insight(P["4306"])') is None
+      and lua.eval('UltimateAH.Api.Trend(P["4306"])') is None and lua.eval('UltimateAH.Api.SellAdvice(P["4306"])') is None)
+lua.execute("NOW = %d + 900" % T1)
 
 # 7. detect: picks the house whose prices match the in-game scan, and the buyout convention
 ah_api.CONFIG = os.path.join(tmp, "cfg.json")

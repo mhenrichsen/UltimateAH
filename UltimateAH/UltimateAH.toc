@@ -2,7 +2,7 @@
 ## Title: Ultimate AH
 ## Notes: Tracks every auction house buy and sale across all your characters, and scans the AH for current prices.
 ## Author: mhenrichsen
-## Version: 2.3.0
+## Version: 2.4.0
 ## SavedVariables: UltimateAHDB
 ## IconTexture: Interface\Icons\INV_Misc_Coin_02
 ## X-Category: Auction/Economy

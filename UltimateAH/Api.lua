@@ -66,10 +66,111 @@ local function merge(prices, key, v, d, keepFrom, rates)
     end
   end
   if rates then e.sold, e.soldT = v[7] or 0, d.t end
+  local pat = d.ins and d.ins[key]
+  if pat then e.ins, e.insT = parse(pat), d.t else e.ins, e.insT = nil, nil end
   for j = 8, #v - 2, 3 do                 -- daily history: day, market, min
     if v[j] > keepFrom then e.h[v[j]] = { v[j + 1], v[j + 2] } end
   end
   return fresh
+end
+
+---------------------------------------------------------------------------
+-- price patterns
+--
+-- The server scan keeps 30 days of history and works out, per item: the trend of the last week,
+-- where today's price sits in the month, the weekday and the hour of the day the item is usually
+-- cheapest and dearest, when it sells, and (once it has proven better than "the price stays the
+-- same") a forecast for a week ahead. They arrive as ApiData's "ins" table; e.ins holds the numbers
+-- in the order of FIELDS. Weekdays and hours are UTC on the wire.
+---------------------------------------------------------------------------
+local FIELDS = { "days", "pos", "trend", "wdLo", "wdLoPct", "wdHi", "wdHiPct", "hrLo", "hrHi", "hrPct", "hrSell", "in7" }
+local DAY_NAME = { [0] = "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" }
+local DAY_SHORT = { [0] = "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" }
+local STEADY = 10                          -- under 1% a day reads as "steady"
+
+local function fresh(e)
+  return e and e.ins and e.insT and time() - e.insT <= 3 * 86400
+end
+
+-- the patterns of one price entry as a table with the FIELDS names; nil without recent server data.
+-- trend is nil when the last week has too few prices
+function A.Insight(e)
+  if not fresh(e) then return nil end
+  local p = {}
+  for i, name in ipairs(FIELDS) do p[name] = e.ins[i] or 0 end
+  if p.trend == 9999 then p.trend = nil end
+  return p
+end
+
+-- the trend alone (tenths of a percent per day), without building a table: the Prices page asks for every item
+function A.Trend(e)
+  if not fresh(e) then return nil end
+  local tr = e.ins[3]
+  if not tr or tr == 9999 then return nil end
+  return tr
+end
+
+function A.TrendText(tr)
+  if not tr then return "" end
+  local W = AL.W
+  if math.abs(tr) < STEADY then return (W and W.MUTED or "") .. "steady|r" end
+  return (tr > 0 and ((W and W.GREEN or "") .. "+") or (W and W.RED or "")) .. string.format("%.1f%%", tr / 10) .. "|r"
+end
+
+local function span(p)
+  return p.days >= 25 and "the month" or ("the last " .. p.days .. " days")
+end
+
+-- an hour of the day on the wire (UTC) as the player's clock shows it
+local function clock(h)
+  local off = (tonumber(date("%H")) - tonumber(date("!%H"))) % 24
+  return string.format("%02d:00", (h + off) % 24)
+end
+
+local function utcWeekday()
+  return (math.floor(time() / 86400) + 3) % 7             -- 0 = Monday
+end
+
+-- lines for a tooltip or a row's hint: { { label, text }, ... }
+function A.InsightLines(e)
+  local p = A.Insight(e)
+  if not p then return nil end
+  local out = {}
+  local where = (p.pos >= 85 and ("high for " .. span(p))) or (p.pos <= 15 and ("low for " .. span(p))) or nil
+  if p.trend or where then
+    local t = p.trend and A.TrendText(p.trend) or ""
+    if p.trend and math.abs(p.trend) >= STEADY then t = t .. " a day" end
+    out[#out + 1] = { "Trend", t .. ((t ~= "" and where) and ", " or "") .. (where or "") }
+  end
+  local wd = {}
+  if p.wdLo >= 0 then wd[#wd + 1] = string.format("cheapest %s (%d%%)", DAY_SHORT[p.wdLo], p.wdLoPct) end
+  if p.wdHi >= 0 then wd[#wd + 1] = string.format("dearest %s (+%d%%)", DAY_SHORT[p.wdHi], p.wdHiPct) end
+  if #wd > 0 then out[#out + 1] = { "Usually", table.concat(wd, ", ") } end
+  local hr = {}
+  if p.hrLo >= 0 then hr[#hr + 1] = string.format("cheapest ~%s, dearest ~%s", clock(p.hrLo), clock(p.hrHi)) end
+  if p.hrSell >= 0 then hr[#hr + 1] = "sells most ~" .. clock(p.hrSell) end
+  if #hr > 0 then out[#out + 1] = { "By hour", table.concat(hr, ", ") } end
+  if p.in7 > 0 then out[#out + 1] = { "In 7 days", "~" .. AL.Money(p.in7) } end
+  return out
+end
+
+-- one short hint for someone about to sell this item -> text, "green" (a good moment) or "gold"
+-- (waiting may pay) or "muted"; nil when the history has nothing to say
+function A.SellAdvice(e)
+  local p = A.Insight(e)
+  if not p then return nil end
+  if p.wdHi >= 0 and p.wdHiPct >= 5 then
+    local ahead = (p.wdHi - utcWeekday()) % 7
+    if ahead == 0 then return "usually dearest today (" .. DAY_NAME[p.wdHi] .. ")", "green" end
+    if ahead <= 3 then return string.format("usually %d%% higher on %s", p.wdHiPct, DAY_NAME[p.wdHi]), "gold" end
+  end
+  local up, down = p.trend and p.trend >= STEADY, p.trend and p.trend <= -STEADY
+  if p.pos >= 85 then return "high for " .. span(p) .. (up and ", still rising" or ""), "green" end
+  if p.pos <= 15 then return "low for " .. span(p) .. (down and ", still falling" or ""), "gold" end
+  if up then return string.format("rising %.1f%% a day", p.trend / 10), "gold" end
+  if down then return string.format("falling %.1f%% a day", -p.trend / 10), "green" end
+  if p.hrHi >= 0 then return "usually dearest around " .. clock(p.hrHi), "muted" end
+  return nil
 end
 
 -- merge ApiData.lua into the prices; spread over frames (10k+ items)
@@ -92,7 +193,7 @@ function A:Import(d, done)
   local i, fresh = 0, 0
   local function finish()
     self.busy = false
-    sc.api = { t = d.t, items = #keys, auctions = d.auctions, house = d.house, soldHours = d.soldHours }
+    sc.api = { t = d.t, items = #keys, auctions = d.auctions, house = d.house, soldHours = d.soldHours, insDays = d.insDays }
     if d.t > (sc.t or 0) then
       sc.t, sc.kind, sc.items, sc.auctions = d.t, "API", fresh, d.auctions
     end
@@ -150,4 +251,7 @@ AL:Command("api", "status of the auto scans from Blizzard's API", function()
   AL:Print(string.format("API scan %s: auction house %s, %s auctions, %d items. %s New scans are picked up at login or /reload.",
     AL.UI and AL.UI.Ago and AL.UI.Ago(info.t) or "?", tostring(info.house), tostring(info.auctions or "?"), info.items or 0,
     (info.soldHours or 0) >= 1 and string.format("Sale rates from %.0f h of data.", info.soldHours) or "No sale rates yet (needs two scans)."))
+  if info.insDays then
+    AL:Print(string.format("Price patterns: the server has %d day(s) of history. Trend and range need 7 days, weekdays about 4 weeks.", info.insDays))
+  end
 end)

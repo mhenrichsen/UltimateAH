@@ -883,15 +883,16 @@ function UI:BuildPrices(v)
   self.pstatus:SetWordWrap(false)
   self.ptable = W.Table(v, {
     { title = "Item", width = 196, icon = true },
-    { title = "Min buyout", width = 90, justify = "RIGHT" },
-    { title = "Market", width = 90, justify = "RIGHT" },
-    { title = "Top 100", width = 90, justify = "RIGHT" },
-    { title = "14d avg", width = 90, justify = "RIGHT" },
+    { title = "Min buyout", width = 80, justify = "RIGHT" },
+    { title = "Market", width = 80, justify = "RIGHT" },
+    { title = "Top 100", width = 80, justify = "RIGHT" },
+    { title = "14d avg", width = 80, justify = "RIGHT" },
+    { title = "Trend/day", width = 64, justify = "RIGHT" },
     { title = "Qty", width = 52, justify = "RIGHT" },
     { title = "Sold/day", width = 64, justify = "RIGHT" },
     { title = "Scanned", width = 66, justify = "RIGHT" },
-    { title = "My avg buy", width = 90, justify = "RIGHT" },
-    { title = "My avg sell", width = 90, justify = "RIGHT" },
+    { title = "My avg buy", width = 78, justify = "RIGHT" },
+    { title = "My avg sell", width = 78, justify = "RIGHT" },
   }, 25)
   self.ptable:SetPoint("TOPLEFT", 0, -40)
   self.ptable.sortCol, self.ptable.sortAsc = 1, true
@@ -922,16 +923,19 @@ function UI:RefreshPrices()
       local st = e.i and AL:ItemStats(e.i)
       local avg = AL.Scanner.HistoryAvg(e)
       local sold = AL.Api and AL.Api.SoldPerDay(e)
+      local trend = AL.Api and AL.Api.Trend(e)
+      local tip = { "Click: price history graph.", "Right-click: add to the watchlist." }
+      if sold then tip[#tip + 1] = "Sold/day is an estimate: units that left the auction house between hourly API scans." end
+      if trend then tip[#tip + 1] = "Trend/day: how the price moved over the last week (from the server scan's history)." end
       rows[#rows + 1] = {
         cells = { qualityColorText(name or ("item " .. key), e.i), AL.Money(e.min), AL.Money(e.mkt), e.top and AL.Money(e.top) or "",
-                  avg and AL.Money(avg) or "", e.qty or "", sold and AL.Api.SoldText(sold) or "", ago(e.t),
+                  avg and AL.Money(avg) or "", trend and AL.Api.TrendText(trend) or "", e.qty or "",
+                  sold and AL.Api.SoldText(sold) or "", ago(e.t),
                   st and st.bq > 0 and AL.Money(st.bt / st.bq) or "", st and st.sq > 0 and AL.Money(st.st / st.sq) or "" },
-        sort = { name or "~", e.min or 0, e.mkt or 0, e.top or 0, avg or 0, e.qty or 0, sold or -1, -(e.t or 0),
+        sort = { name or "~", e.min or 0, e.mkt or 0, e.top or 0, avg or 0, trend or -9999, e.qty or 0, sold or -1, -(e.t or 0),
                  st and st.bq > 0 and st.bt / st.bq or 0, st and st.sq > 0 and st.st / st.sq or 0 },
-        colors = { nil, nil, nil, nil, nil, nil, nil, (time() - (e.t or 0) > 86400) and W.C.muted or nil },
-        icon = AL.ItemIcon(e.i), itemID = e.i, key = key,
-        tip = { "Click: price history graph.", "Right-click: add to the watchlist.",
-                sold and "Sold/day is an estimate: units that left the auction house between hourly API scans." or nil },
+        colors = { nil, nil, nil, nil, nil, nil, nil, nil, (time() - (e.t or 0) > 86400) and W.C.muted or nil },
+        icon = AL.ItemIcon(e.i), itemID = e.i, key = key, tip = tip,
       }
     end
   end
@@ -945,7 +949,7 @@ function UI:ShowPriceGraph(key)
   if not e then return end
   if not self.pgraph then
     local f = W.Panel(self.frame, W.C.bg)
-    f:SetSize(680, 380)
+    f:SetSize(680, 398)
     f:SetPoint("CENTER", self.frame, "CENTER", 90, -10)
     f:SetFrameLevel(self.frame:GetFrameLevel() + 20)
     W.Shadow(f)
@@ -964,6 +968,13 @@ function UI:ShowPriceGraph(key)
     f.graph:SetPoint("TOPLEFT", 18, -62)
     local legend = W.Label(f, W.ACCENT .. "——|r  Market        " .. W.GOLD .. "——|r  Lowest buyout", "UAHFontMuted")
     legend:SetPoint("BOTTOMRIGHT", -18, 12)
+    -- what the server scan's history says: trend and weekdays above, hours and forecast below
+    f.patterns = { W.Label(f, "", "UAHFontMuted"), W.Label(f, "", "UAHFontMuted") }
+    f.patterns[1]:SetPoint("BOTTOMLEFT", 18, 30)
+    f.patterns[1]:SetWidth(640)
+    f.patterns[2]:SetPoint("BOTTOMLEFT", 18, 12)
+    f.patterns[2]:SetWidth(400)
+    for _, l in ipairs(f.patterns) do l:SetJustifyH("LEFT"); l:SetWordWrap(false) end
     self.pgraph = f
   end
   local f = self.pgraph
@@ -985,6 +996,15 @@ function UI:ShowPriceGraph(key)
     { name = "Lowest", color = W.C.gold, points = mn, thick = 1.5, alpha = 0.75 },
     { name = "Market", color = W.C.accent, points = mk, thick = 2.5 },
   })
+  local top, bottom = {}, {}
+  for _, l in ipairs(AL.Api and AL.Api.InsightLines(e) or {}) do
+    if l[1] == "Trend" then top[#top + 1] = "Trend " .. l[2]
+    elseif l[1] == "Usually" then top[#top + 1] = "usually " .. l[2]
+    else bottom[#bottom + 1] = l[1] .. ": " .. l[2] end
+  end
+  if #top == 0 then top, bottom = bottom, {} end
+  f.patterns[1]:SetText(table.concat(top, "  \194\183  "))
+  f.patterns[2]:SetText(table.concat(bottom, "  \194\183  "))
   f:Show()
 end
 
@@ -1278,6 +1298,11 @@ local function addTooltip(tt, link)
       tt:AddDoubleLine("|cff33ccffUAH|r Sold per day", sold > 0 and ("~" .. AL.Api.SoldText(sold)) or "|cff999999none seen|r", 1, 1, 1, 1, 1, 1)
     end
     tt:AddDoubleLine("|cff33ccffUAH|r 14-day avg", (avg and AL.Money(avg) or "-") .. "  |cff999999(" .. ago(e.t) .. ", " .. (e.qty or 0) .. " up)|r", 1, 1, 1, 1, 1, 1)
+    if AL.db.settings.tooltipPatterns ~= false and AL.Api then
+      for _, l in ipairs(AL.Api.InsightLines(e) or {}) do
+        tt:AddDoubleLine("|cff33ccffUAH|r " .. l[1], l[2], 1, 1, 1, 1, 1, 1)
+      end
+    end
     if AL.db.settings.tooltipPost ~= false and AL.Suggest then
       local s = AL.Suggest(id, link)
       if s.post then

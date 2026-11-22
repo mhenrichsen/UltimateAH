@@ -56,6 +56,19 @@ MIN_COVER = 3000           # seconds of compared scans needed before sale rates 
 # the project's server scan (ah_server.py serve; EU region). "server" in blizzard_api.json overrides
 # it: another address to use your own, "" to use none
 SERVER = "https://dytm1zc1vmdd7h24ebh1yae9.46.224.200.140.sslip.io"
+# the price patterns of one item, computed by the server scan from up to 30 days of history:
+#   days     days with a price in that history
+#   pos      where today's market price sits among those days, 0 (lowest) .. 100 (highest)
+#   trend    change per day over the last week in tenths of a percent, 0 = no clear direction,
+#            9999 = too few recent days to say
+#   wdLo/wdHi          the weekday (0 = Monday, UTC) the item is usually cheapest / dearest, -1 = none
+#   wdLoPct/wdHiPct    by how many percent, against the days around it
+#   hrLo/hrHi/hrPct    the hour of the day (UTC) it is usually cheapest / dearest and the spread in
+#                      percent, -1 = none
+#   hrSell   the hour of the day (UTC) around which most units sell, -1 = unknown
+#   in7      expected market price in 7 days (copper), 0 = no forecast (too little history, or the
+#            forecast did not beat "the price stays the same" on past data)
+INS_FIELDS = ("days", "pos", "trend", "wdLo", "wdLoPct", "wdHi", "wdHiPct", "hrLo", "hrHi", "hrPct", "hrSell", "in7")
 MIN_LEFT = {"SHORT": 0, "MEDIUM": 1800, "LONG": 7200, "VERY_LONG": 43200}
 TL_CODE = {"SHORT": 0, "MEDIUM": 1, "LONG": 2, "VERY_LONG": 3}
 TL_MIN = [0, 1800, 7200, 43200]
@@ -494,6 +507,15 @@ def write_lua(path, meta, items):
         vals = [it["min"], it["mkt"], it["qty"], it["num"], it["top"], it["other"], it["sold"]] + it["h"]
         lines.append('    ["%s"]="%s",' % (key, ",".join(lua_num(x) for x in vals)))
     lines.append("  },")
+    # price patterns from the server scan's history (see INS_FIELDS). Single-quoted keys: script
+    # versions from before this table existed read every line starting with [" as an item
+    pat = sorted(k for k, it in items.items() if it.get("ins"))
+    if pat:
+        lines.append("  -- ['key'] = \"%s\"" % ",".join(INS_FIELDS))
+        lines.append("  ins = {")
+        for key in pat:
+            lines.append("    ['%s']=\"%s\"," % (key, ",".join(lua_num(x) for x in items[key]["ins"])))
+        lines.append("  },")
     lines.append("}")
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8", newline="\n") as f:
@@ -543,12 +565,21 @@ def server_file(cfg, region, house):
 
 def parse_data(data):
     """a data file -> (meta, {key: [min, market, qty, auctions, top100, lowestOther, soldPerDay, day, market, min, ...]})"""
-    meta, items = {}, {}
+    meta, items, ins = parse_file(data)
+    return meta, items
+
+
+def parse_file(data):
+    """a data file -> (meta, items as in parse_data, {key: [the INS_FIELDS numbers]})"""
+    meta, items, ins = {}, {}, {}
     for line in data.split("\n"):
         line = line.strip()
         if line.startswith('["'):
             key, _, rest = line[2:].partition('"]="')
             items[key] = [float(x) if "." in x else int(x) for x in rest.rstrip('",').split(",") if x]
+        elif line.startswith("['"):
+            key, _, rest = line[2:].partition("']=\"")
+            ins[key] = [float(x) if "." in x else int(x) for x in rest.rstrip('",').split(",") if x]
         elif " = " in line and not items:
             k, _, v = line.rstrip(",").partition(" = ")
             if k.isidentifier() and v and v != "{":
@@ -556,7 +587,7 @@ def parse_data(data):
                     meta[k] = json.loads(v)
                 except ValueError:
                     pass
-    return meta, items
+    return meta, items, ins
 
 
 def cmd_fetch(cfg, out=None):
@@ -640,14 +671,18 @@ def cmd_detect_server(cfg, faction=None):
 
 
 def server_overlay(cfg, region, house, t, items):
-    """give a local scan the server's history and sale rates: the server scans every hour, this PC
-    only while it is on. -> the server's soldHours, or None when its file is missing or stale"""
+    """give a local scan the server's history, sale rates and price patterns: the server scans every
+    hour and keeps 30 days, this PC scans only while it is on.
+    -> the server file's header, or None when the file is missing or stale"""
     txt = server_file(cfg, region, house)
     if not txt:
         return None
-    meta, srv = parse_data(txt)
+    meta, srv, ins = parse_file(txt)
     if meta.get("house") != house or abs(t - meta.get("t", 0)) > MAX_GAP:
         return None
+    for key, v in ins.items():
+        if key in items:
+            items[key]["ins"] = v
     rates = (meta.get("soldHours") or 0) >= 1
     for key, it in items.items():
         v = srv.get(key)
@@ -663,7 +698,7 @@ def server_overlay(cfg, region, house, t, items):
         for key, v in srv.items():
             if key not in items and len(v) > 6 and v[6] > 0:
                 items[key] = {"min": 0, "mkt": 0, "qty": 0, "num": 0, "top": 0, "other": 0, "h": [], "sold": v[6]}
-    return meta.get("soldHours") or 0
+    return meta
 
 
 # ---------------------------------------------------------------------------
@@ -809,14 +844,17 @@ def cmd_scan(api, cfg, out=None, now=None, force=False):
 
     # the addon reads sale rates only when soldHours >= 1, so this must agree with `rates`
     sold_hours = max(1.0, round(cover / 3600.0, 1)) if rates else 0.0
-    srv_hours = server_overlay(cfg, api.region, house, t, items)
-    if srv_hours is not None:
+    srv = server_overlay(cfg, api.region, house, t, items)
+    if srv is not None:
+        srv_hours = srv.get("soldHours") or 0
         log("history and sale rates taken from the server scan (%.0f h of data)" % srv_hours)
         if srv_hours >= 1:
             sold_hours = srv_hours
     meta = collections.OrderedDict(v=1, t=t, region=api.region, house=house,
                                    faction=cfg.get("faction") or faction_of(snap.get("name")),
                                    auctions=len(aucs), soldHours=sold_hours)
+    if srv and srv.get("insDays"):
+        meta["insDays"] = srv["insDays"]            # days of history behind the price patterns
     write_lua(out, meta, items)
     write_state(name + ".json.gz", {"t": t, "modified": snap.get("modified"), "auctions": aucs,
                                     "prices": {k: {"mkt": v["mkt"]} for k, v in table.items()}})

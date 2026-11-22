@@ -16,7 +16,7 @@ layout code with sample data. Fonts and icons differ a little from the game.
   checked in the game.
 - The 2.x work has only been tested outside the game so far: the new look, the Watch, Sell and
   Settings pages, posting auctions from the Sell page, and loading API scan data. It is covered
-  by 178 automated checks against a mocked game API and by the offline renders, but it has not
+  by 226 automated checks against a mocked game API and by the offline renders, but it has not
   been run in the live client yet. Treat 2.x as a beta.
 - The API scan script and the server scan have been run against Blizzard's real API (EU).
 
@@ -96,9 +96,9 @@ every Alliance and Horde house of the region when it has, and hands out the resu
 
 | File | What it is |
 |---|---|
-| `/eu-<house>.lua.gz` | What the addon loads: current prices, 14 days of daily prices, units sold per day. |
-| `/history.db.gz` | A SQLite database: one row per auction house, item and day with the mean market price, the lowest buyout, the listed quantity and the units sold. |
-| `/index.json` | The houses and the time of their last scan. |
+| `/eu-<house>.lua.gz` | What the addon loads: current prices, 14 days of daily prices, units sold per day, price patterns. |
+| `/history.db.gz` | A SQLite database: one row per auction house, item and day with the mean market price, the lowest buyout, the listed quantity and the units sold; prices and sales by hour of the day; the forecast's check per house. |
+| `/index.json` | The houses, the time of their last scan, the days of history, and how the forecast did against "unchanged". |
 | `/healthz` | A small status answer for health checks. |
 
 The previous snapshot of each house (needed to see what was sold) and the log stay in the data
@@ -118,6 +118,31 @@ Without Docker, `python ah_server.py run --dir <folder>` once an hour does the s
 
 Blizzard's API terms allow keeping API data for 30 days at most, so the database drops anything
 older. Auction data: Blizzard Entertainment, through the Battle.net Game Data API.
+
+### Price patterns
+
+The server scan keeps 30 days of history, and from it works out for every item:
+
+| Pattern | What it means | Needs |
+|---|---|---|
+| Trend | How the price moved over the last week, in percent per day. Only when the days agree on a direction. | 5 of the last 8 days |
+| Position | Where today's price sits among the last 30 days: "high for the month", "low for the month". | 7 days |
+| Weekday | The weekday the item is usually cheapest and the one it is usually dearest, against the days around it. | about 4 weeks |
+| Hour | The hour of the day it is usually cheapest and dearest, and the hour most units sell. Only for items with at least 5 auctions. | 5 days per hour |
+| Forecast | The expected market price in 7 days, from the trend and from how far the price is from its monthly median. | about 2 weeks |
+
+The addon shows them in item tooltips, as a Trend column on the Prices page, under the price graph,
+and as a one-line hint on the Sell page ("usually 12% higher on Saturday", "high for the month").
+
+They are statistics, not promises, and they are built to say nothing rather than guess:
+
+- A weekday or an hour is only named when it stands out clearly against the item's own noise. On
+  random prices the checks name a weekday in about 3% of items and an hour in under 1%.
+- The forecast is tested every day against "the price stays the same" on what the last weeks' prices
+  really did. A house only gets forecasts while the forecast is the better of the two; the scan log
+  and `/index.json` show both errors.
+- Thirty days is all Blizzard's terms allow anyone to keep, so there is no seasonality beyond the
+  week: holiday events and patch cycles are out of reach.
 
 ### Units sold per day
 

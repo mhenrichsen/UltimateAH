@@ -223,6 +223,16 @@ for _, id in ipairs(ids) do
     sold = b > 50000 and math.random() * 6 or (b > 5000 and math.random(8, 90) or math.random(200, 4000)), soldT = NOW - 1800 }
 end
 A.db.prices[scope]["12360"].sold = 0
+-- price patterns, as the server scan's history gives them: days, position in the range, trend, weekdays, hours, forecast
+local trends = { -22, -8, 0, 0, 4, 12, 31, 0, -14, 6 }
+for n, id in ipairs(ids) do
+  local e = A.db.prices[scope][tostring(id)]
+  local tr = trends[(n - 1) % #trends + 1]
+  e.ins = { 30, math.random(5, 95), tr, -1, 0, -1, 0, -1, -1, 0, -1, 0 }
+  e.insT = NOW - 1800
+end
+A.db.prices[scope]["12360"].ins = { 30, 92, 14, 1, -6, 5, 9, 3, 19, 8, 20, 455000 }
+A.db.prices[scope]["4306"].ins = { 30, 12, -22, 2, -7, 6, 11, 4, 20, 12, 21, 195 }
 A.db.prices[scope]["4306"].minOther = 180
 A.db.prices[scope]["12360"].minOther = 401000
 A.db.chars = {

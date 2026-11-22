@@ -1,10 +1,14 @@
 """Offline tests for the server scan (ah_server.py) and the PC script's use of its files:
 a fake Blizzard API with several auction houses, two scans an hour apart, the database, the
 published files, and ah_api.py reading them without an API key."""
+import array
+import datetime
 import gzip
 import io
 import json
+import math
 import os
+import random
 import re
 import sqlite3
 import tempfile
@@ -167,7 +171,7 @@ ah_api.cmd_scan(api2, pc_cfg, out=OUT, now=T0)
 fake2.modified[110], fake2.regular[110], fake2.commodities[110] = fake.modified[110], fake.regular[110], fake.commodities[110]
 ah_api.cmd_scan(api2, pc_cfg, out=OUT, now=T1)
 pc_meta, pc_items = ah_api.parse_data(open(OUT, encoding="utf-8").read())
-check("parity: server file equals the PC script's file", pc_items == items and pc_meta == meta,
+check("parity: server file equals the PC script's file", pc_items == items and pc_meta == {k: v for k, v in meta.items() if k != "insDays"},
       [k for k in set(pc_items) | set(items) if pc_items.get(k) != items.get(k)][:3])
 
 # 4. a failing house does not stop the others; old days leave the database
@@ -306,6 +310,166 @@ check("http: private files and paths outside the folder are not handed out",
       all(http(p)[0] == 404 for p in private), [(p, http(p)[0]) for p in private])
 check("http: the database download is there", http("/history.db.gz", method="HEAD")[0] == 200)
 httpd.shutdown()
+
+# 8. price patterns: the pure functions on made-up series
+D0 = 20801                                               # a Monday (UTC day number)
+check("patterns: day numbers map to weekdays", all(ah_server.weekday(x) == (datetime.date(1970, 1, 1) + datetime.timedelta(days=x)).weekday() for x in range(D0, D0 + 14)) and ah_server.weekday(D0) == 0)
+rnd = random.Random(7)
+days = list(range(D0, D0 + 30))
+flat = [math.log(10000) + rnd.gauss(0, 0.01) for _ in days]
+rising = [math.log(10000) + 0.02 * max(0, d - (D0 + 21)) + rnd.gauss(0, 0.002) for d in days]
+tr = ah_server.trend(days, rising, D0 + 29)
+check("trend: a price rising 2% a day is found", tr is not None and abs(tr - 0.02) < 0.004, tr)
+check("trend: too few recent days gives no answer", ah_server.trend(days[:4], flat[:4], D0 + 3) is None)
+check("trend: old prices do not count", ah_server.trend(days[:10], rising[:10], D0 + 29) is None)
+wk = [math.log(20000) + {5: math.log(1.12), 1: math.log(0.90)}.get(ah_server.weekday(d), 0) + rnd.gauss(0, 0.005) for d in days]
+we = ah_server.weekday_effect(days, wk)
+check("weekday: dear Saturdays and cheap Tuesdays are found", we[0] == 1 and -12 <= we[1] <= -8 and we[2] == 5 and 10 <= we[3] <= 14, we)
+check("weekday: three weeks are not enough to say", ah_server.weekday_effect(days[:21], wk[:21]) == [-1, 0, -1, 0],
+      ah_server.weekday_effect(days[:21], wk[:21]))
+
+
+def hour_row(price_at, units_at, n_days, noise, r):
+    """the hours-table row an item gets from n_days of hourly scans"""
+    a = array.array("f", [0.0] * 96)
+    for d in range(n_days):
+        a = array.array("f", [x * ah_server.PROFILE_DECAY for x in a])
+        for h in range(24):
+            x = math.log(price_at(h)) + r.gauss(0, noise)
+            a[h] += x
+            a[24 + h] += 1
+            a[72 + h] += x * x
+            a[48 + h] += units_at(h)
+    return a.tobytes()
+
+
+wave = hour_row(lambda h: 1 + 0.1 * math.cos(2 * math.pi * (h - 20) / 24), lambda h: 60 if h in (19, 20, 21) else 2, 14, 0.01, rnd)
+he = ah_server.hour_effect(wave)
+check("hours: cheapest and dearest hour of a daily wave are found", he[0] in (7, 8, 9) and he[1] in (19, 20, 21) and 15 <= he[2] <= 23, he)
+check("hours: the hour most units sell is found", he[3] in (19, 20, 21), he)
+check("hours: four days are not enough to say", ah_server.hour_effect(hour_row(lambda h: 1 + 0.1 * math.cos(h), lambda h: 0, 4, 0.01, rnd))[:3] == [-1, -1, 0])
+check("hours: no row, no answer", ah_server.hour_effect(None) == [-1, -1, 0, -1])
+
+# pure noise must rarely look like a pattern
+false_tr = false_wd = false_hr = 0
+N = 300
+for seed in range(N):
+    r = random.Random(1000 + seed)
+    noise = [math.log(10000) + r.gauss(0, 0.05) for _ in days]
+    false_tr += bool(ah_server.trend(days, noise, D0 + 29))
+    w = ah_server.weekday_effect(days, noise)
+    false_wd += (w[0] >= 0) or (w[2] >= 0)
+    false_hr += ah_server.hour_effect(hour_row(lambda h: 1.0, lambda h: 5, 30, 0.05, r))[0] >= 0
+check("noise: a trend is seen in under 8% of random series", false_tr <= 0.08 * N, "%d of %d" % (false_tr, N))
+check("noise: a weekday is seen in under 5% of random series", false_wd <= 0.05 * N, "%d of %d" % (false_wd, N))
+check("noise: an hour of the day is seen in under 5% of random series", false_hr <= 0.05 * N, "%d of %d" % (false_hr, N))
+
+# the forecast: fitted on what happened, switched on only when it beats "the price stays the same"
+ah_server.FIT_MIN = 100
+samples = []
+for seed in range(40):                                   # prices that drift back to their usual level
+    r = random.Random(2000 + seed)
+    x, series = 0.0, []
+    for _ in days:
+        x = 0.6 * x + r.gauss(0, 0.1)
+        series.append(math.log(10000) + x)
+    samples += ah_server.fit_samples(days, series)
+a, b, n, err, naive, ok = ah_server.fit(samples)
+check("forecast: prices that drift back are forecast better than 'unchanged'", ok == 1 and b > 0.3 and err < naive, (a, b, n, err, naive))
+samples = []
+for seed in range(40):                                   # a random walk cannot be forecast
+    r = random.Random(3000 + seed)
+    x, series = 0.0, []
+    for _ in days:
+        x += r.gauss(0, 0.05)
+        series.append(math.log(10000) + x)
+    samples += ah_server.fit_samples(days, series)
+a, b, n, err, naive, ok = ah_server.fit(samples)
+check("forecast: stays off for prices that cannot be forecast", ok == 0, (a, b, n, err, naive))
+check("forecast: stays off with too few checks", ah_server.fit(samples[:50])[5] == 0)
+
+# 9. a simulated month of hourly scans, through the real scan code
+DIR4 = os.path.join(tmp, "server4")
+ah_server.FIT_SAMPLE = 1
+sim = Fake()
+api4 = ah_api.Api(cfg, opener=sim)
+db4 = ah_server.connect(DIR4)
+rnd = random.Random(11)
+ar = {item: 0.0 for item in range(5000, 5030)}
+day_noise = {}
+entry = None
+for i in range(30 * 24):
+    d, h = divmod(i, 24)
+    if h == 0:
+        for item in ar:
+            ar[item] = 0.6 * ar[item] + rnd.gauss(0, 0.1)
+        if d >= 28:
+            ar[5000] = 0.5                               # far above its usual price at the end
+        day_noise = {7005: rnd.gauss(0, 0.004)}
+    aucs = []
+
+    def put(item, price):
+        for k in range(6):                               # six auctions each: enough to follow the item by the hour
+            aucs.append(com(item * 100 + k, item, int(round(price)), 10))
+
+    put(4306, 15000 * (1 + 0.1 * math.cos(2 * math.pi * (h - 20) / 24)))
+    aucs.append(com(900000 + i, 4306, int(round(15000 * (1 + 0.1 * math.cos(2 * math.pi * (h - 20) / 24)))),
+                    60 if h in (18, 19, 20) else 2))     # bought within the hour: most in the evening
+    put(7005, 20000 * {5: 1.12, 1: 0.90}.get(ah_server.weekday(D0 + d), 1.0) * math.exp(day_noise[7005]))
+    put(2589, 30000 * math.exp(0.02 * max(0, d - 21)))
+    put(3000, 10000 * math.exp(rnd.gauss(0, 0.05)))
+    for item, x in ar.items():
+        put(item, 10000 * math.exp(x))
+    sim.regular[110], sim.commodities[110] = [], aucs
+    sim.modified[110] = "scan %d" % i
+    entry = ah_server.scan_house(api4, db4, DIR4, {"id": 110, "name": NAMES[110]}, now=D0 * 86400 + 23 * 60 + i * 3600)
+db4.close()
+with gzip.open(os.path.join(DIR4, "eu-110.lua.gz"), "rt", encoding="utf-8") as f:
+    month = f.read()
+m4, i4, p4 = ah_api.parse_file(month)
+F = {name: j for j, name in enumerate(ah_api.INS_FIELDS)}
+check("month: the header says how many days stand behind the patterns", m4.get("insDays") == 30 and entry["days"] == 30, m4)
+check("month: every followed item has patterns", all(str(k) in p4 for k in [4306, 7005, 2589, 3000, 5000]) and len(p4["4306"]) == len(F), sorted(p4)[:8])
+x = p4["4306"]
+check("month: the daily wave is found (cheapest near 08:00, dearest near 20:00 UTC)",
+      x[F["hrLo"]] in (7, 8, 9) and x[F["hrHi"]] in (19, 20, 21) and 15 <= x[F["hrPct"]] <= 23, x)
+check("month: the evening is when it sells", x[F["hrSell"]] in (19, 20, 21), x)
+check("month: an item with a daily wave has no trend and no weekday", x[F["trend"]] == 0 and x[F["wdLo"]] == -1 and x[F["wdHi"]] == -1, x)
+x = p4["7005"]
+check("month: dear Saturdays and cheap Tuesdays are found", x[F["wdLo"]] == 1 and -12 <= x[F["wdLoPct"]] <= -8
+      and x[F["wdHi"]] == 5 and 10 <= x[F["wdHiPct"]] <= 14, x)
+x = p4["2589"]
+check("month: a price rising 2% a day shows as +2.0%/day at the top of its range", 17 <= x[F["trend"]] <= 23 and x[F["pos"]] >= 95, x)
+x = p4["3000"]
+check("month: a noisy item shows no pattern", x[F["trend"]] == 0 and x[F["wdLo"]] == -1 and x[F["wdHi"]] == -1 and x[F["hrLo"]] == -1, x)
+x = p4["5000"]
+check("month: the forecast is on and expects a spiked price to come down", entry["forecast"]["on"] and 0 < x[F["in7"]] < i4["5000"][1],
+      (entry["forecast"], x, i4["5000"][:2]))
+check("month: the sale rate and history are still there", i4["4306"][6] > 0 and len(i4["4306"]) == 7 + 3 * ah_api.HISTORY_DAYS, i4["4306"][:8])
+lua = lupa.LuaRuntime(unpack_returned_tuples=True)
+lua.execute(month)
+d = lua.globals().UltimateAH_ApiData
+check("month: the file is valid Lua with both tables", d["items"]["4306"] is not None and d["ins"]["4306"] is not None and d.insDays == 30)
+old_items = {}
+for line in month.split("\n"):                           # how script versions before the patterns read the file
+    line = line.strip()
+    if line.startswith('["'):
+        key, _, rest = line[2:].partition('"]="')
+        old_items[key] = rest
+check("month: older script versions still read the items and nothing else", len(old_items) == len(i4), (len(old_items), len(i4)))
+con = sqlite3.connect(os.path.join(DIR4, "history.db"))
+check("month: nothing older than 30 days is kept", con.execute("SELECT MIN(day) FROM daily").fetchone()[0] == D0
+      and con.execute("SELECT MIN(day) FROM hours").fetchone()[0] > D0 + 29 - ah_server.KEEP_DAYS)
+con.close()
+
+# the PC script with an API key passes the server's patterns on
+DIR2 = DIR4
+pc4 = dict(cfg, ruleset=1, house=110, buyout_is_total=True, faction="Alliance", server="https://files.example/data")
+OUT4 = os.path.join(tmp, "ApiData4.lua")
+ah_api.STATE = os.path.join(tmp, "pc4_state")
+ah_api.cmd_scan(ah_api.Api(pc4, opener=sim), pc4, out=OUT4, now=D0 * 86400 + 23 * 60 + 719 * 3600 + 300)
+m5, i5, p5 = ah_api.parse_file(open(OUT4, encoding="utf-8").read())
+check("overlay: the PC script's file carries the server's patterns", p5.get("4306") == p4["4306"] and m5.get("insDays") == 30, (m5, p5.get("4306")))
 
 print()
 print("%d failure(s)" % fails)

@@ -66,6 +66,14 @@ each item are sold per day** (the Sold/day column on Prices, and a tooltip line)
 An auction that vanished counts as sold when it still had time left and no cheaper auction of the
 same item stayed behind; a commodity listing whose quantity dropped was partly bought.
 
+With the server scan's 30 days of history come **price patterns**: the trend of the last week, whether
+today's price is high or low for the month, the weekday and hour an item is usually cheapest and
+dearest, when it sells, and a 7-day forecast. They show in tooltips, as the Trend column on Prices,
+under the price graph and as a hint on the Sell page ("usually 12% higher on Saturday"). A pattern is
+only shown when it stands out clearly, and the forecast only while it beats "the price stays the
+same" on past data, so a new server shows nothing for the first week. They can be switched off in
+Settings.
+
 Setup without an API key (EU region): the project's server scans every Forever auction house each
 hour, and the script downloads your house's file from it.
 1. Do a Full Scan in the game once, then `/reload`.

@@ -314,7 +314,10 @@ function UI:SellPanel()
   p.icon:SetTexture(AL.ItemIcon(r.id))
   p.icon:Show()
   p.name:SetText(qtext(r.name, r.id, r.link))
-  p.sub:SetText(string.format("%d in your bags", r.count))
+  local hint, tone = nil, nil
+  if AL.Api then hint, tone = AL.Api.SellAdvice(s.e) end
+  local toneCode = { green = W.GREEN, gold = W.GOLD, muted = "" }
+  p.sub:SetText(string.format("%d in your bags", r.count) .. (hint and ("  \194\183  " .. toneCode[tone] .. hint .. "|r") or ""))
   p.lowest:SetText(s.lowest and AL.Money(s.lowest) or (W.MUTED .. "none listed|r"))
   p.normal:SetText(s.ref and AL.Money(s.ref) or AL.Money(0))
   local sold = AL.Api and AL.Api.SoldPerDay(s.e)
@@ -399,6 +402,7 @@ function UI:RefreshSell()
     local tip = { s.reason and ("Post at: " .. s.reason) or "No auction data." }
     if post then tip[#tip + 1] = string.format("%d at %s each: %s after the cut.", r.count, AL.Money(post), AL.Money(proceeds)) end
     if (s.vendor or 0) > 0 then tip[#tip + 1] = "A vendor pays " .. AL.Money(s.vendor) .. " each." end
+    for _, l in ipairs(AL.Api and AL.Api.InsightLines(s.e) or {}) do tip[#tip + 1] = l[1] .. ": " .. l[2] end
     tip[#tip + 1] = "Click: prepare the auction.  Right-click: search in the auction house."
     rows[#rows + 1] = {
       cells = { qtext(name, r.id, r.link), r.count, post and AL.Money(post) or "", post and AL.Money(proceeds) or "",
@@ -458,6 +462,8 @@ function UI:BuildSettings(v)
         function() return S().tooltip end, function(x) S().tooltip = x end },
       { "Post-price suggestion", "What to post an item for, and what your stack is worth.",
         function() return S().tooltipPost ~= false end, function(x) S().tooltipPost = x end },
+      { "Price patterns", "Trend, the usual cheapest and dearest day and hour, and a forecast.",
+        function() return S().tooltipPatterns ~= false end, function(x) S().tooltipPatterns = x end },
     } },
     { "CHAT", {
       { "Answer 'AH <item>' in guild chat", "Replies with our prices. Several addon users never answer twice.",
