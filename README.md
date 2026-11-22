@@ -48,12 +48,13 @@ The addon is also on CurseForge as a beta: https://www.curseforge.com/wow/addons
 An addon cannot reach the internet, so a small Python script does it from outside the game. There
 are two ways to use it.
 
-### Without an API key: the server's data
+### Without an API key: a server scan's data
 
-An hourly job in this repository scans every Forever auction house in the EU region, Alliance and
-Horde, and publishes one data file per house (see [The server scan](#the-server-scan)).
+A [server scan](#the-server-scan) scans every Forever auction house of a region, Alliance and Horde,
+around the clock and hands out one data file per house. If you (or someone you trust) run one:
 
-1. Do a Full Scan in the game once, then `/reload`.
+1. Copy `blizzard_api.example.json` to `blizzard_api.json` and set `"server"` to its address.
+   Then do a Full Scan in the game once and `/reload`.
 2. `python ah_api.py detect` finds which auction house is yours by comparing the server's files with
    your scan. `python ah_api.py fetch` downloads your house's file into the addon folder.
 3. Schedule `python ah_api.py auto` hourly, for example with Windows Task Scheduler.
@@ -61,8 +62,9 @@ Horde, and publishes one data file per house (see [The server scan](#the-server-
 
 ### With your own API key
 
-Your PC scans your auction house itself, which also tells the addon which auctions are yours. The
-server's file still adds the price history and sale rates of the hours your PC was off.
+Your PC scans your auction house itself, which also tells the addon which auctions are yours. With
+`"server"` set, the server's file still adds the price history and sale rates of the hours your PC
+was off.
 
 1. Create an API client at https://develop.battle.net/access/clients.
 2. Copy `blizzard_api.example.json` to `blizzard_api.json` and fill in the client ID and secret.
@@ -80,20 +82,33 @@ It may break when Blizzard changes things.
 
 ### The server scan
 
-`ah_server.py` is the same scan for a machine that is always on. `.github/workflows/ah-scan.yml` runs
-it twice an hour (Blizzard publishes new data once an hour, at about :23) and stores everything as
-files of the repository's `data` release:
+`ah_server.py` is the same scan for a machine that is always on. `python ah_server.py serve` checks
+every five minutes whether Blizzard has new data (it publishes once an hour, at about :23), scans
+every Alliance and Horde house of the region when it has, and hands out the results over HTTP:
 
 | File | What it is |
 |---|---|
-| `eu-<house>.lua.gz` | What the addon loads: current prices, 14 days of daily prices, units sold per day. |
-| `history.db.gz` | A SQLite database: one row per auction house, item and day with the mean market price, the lowest buyout, the listed quantity and the units sold. |
-| `state-eu-<house>.json.gz` | The previous snapshot of each house, needed to see what was sold. |
-| `index.json` | The houses and the time of their last scan. |
+| `/eu-<house>.lua.gz` | What the addon loads: current prices, 14 days of daily prices, units sold per day. |
+| `/history.db.gz` | A SQLite database: one row per auction house, item and day with the mean market price, the lowest buyout, the listed quantity and the units sold. |
+| `/index.json` | The houses and the time of their last scan. |
+| `/healthz` | A small status answer for health checks. |
 
-To run it in your own fork, add the repository secrets `BLIZZARD_CLIENT_ID` and
-`BLIZZARD_CLIENT_SECRET` (Settings, Secrets and variables, Actions). Anywhere else:
-`python ah_server.py run --dir <folder>` once an hour with the two environment variables set.
+The previous snapshot of each house (needed to see what was sold) and the log stay in the data
+folder and are not handed out.
+
+The `Dockerfile` packs it as a service: build it, give it a volume at `/data` and the environment
+variables `BLIZZARD_CLIENT_ID` and `BLIZZARD_CLIENT_SECRET`, and put HTTPS in front of port 8080
+(the data file is Lua code the game loads, so do not hand it out over plain HTTP). One scan of the
+eight EU houses takes about 25 seconds and 500 MB of memory; the rest of the hour it idles.
+
+```
+docker build -t ultimate-ah-scan .
+docker run -d -p 8080:8080 -v ah-data:/data -e BLIZZARD_CLIENT_ID=... -e BLIZZARD_CLIENT_SECRET=... ultimate-ah-scan
+```
+
+Without Docker, `python ah_server.py run --dir <folder>` once an hour does the same scan, and
+`.github/workflows/ah-scan.yml` is a GitHub job that does it and stores the files on a release
+(manual by default; it needs the two values as repository secrets).
 
 Blizzard's API terms allow keeping API data for 30 days at most, so the database drops anything
 older. Auction data: Blizzard Entertainment, through the Battle.net Game Data API.

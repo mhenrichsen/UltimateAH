@@ -12,10 +12,11 @@ The addon reads that file at login or /reload.
     python ah_api.py fetch      no API key needed: download the data file the project's server scan publishes
     python ah_api.py status     what the last scan stored
 
-Without credentials, detect / auto / fetch use the files the server scan (ah_server.py, an hourly job in
-the project's repository) publishes for every Forever auction house. With credentials the scan is your
-own, and the server's files add what a PC that is not always on cannot have: a price point for every
-day and a sold-per-day figure from every hour.
+A server scan (ah_server.py, see the README) scans every Forever auction house around the clock and
+hands out one data file per house. Put its address in blizzard_api.json as "server". Without
+credentials, detect / auto / fetch then use those files. With credentials the scan is your own, and the
+server's files add what a PC that is not always on cannot have: a price point for every day and a
+sold-per-day figure from every hour.
 
 Credentials: blizzard_api.json next to this script (client_id / client_secret from
 https://develop.battle.net/access/clients), or the environment variables
@@ -52,8 +53,9 @@ MIN_COVER = 3000           # seconds of compared scans needed before sale rates 
                            # snapshots are a few seconds short of 3600 s apart, so not a full hour
 # the least time an auction in each bracket still has left; one that vanished sooner was
 # bought or cancelled, it cannot have run out
-# where the server scan publishes its files; "server": "" in blizzard_api.json turns it off
-SERVER = "https://github.com/mhenrichsen/UltimateAH/releases/download/data"
+# the address of a running server scan (ah_server.py serve), normally set as "server" in
+# blizzard_api.json; empty = none
+SERVER = ""
 MIN_LEFT = {"SHORT": 0, "MEDIUM": 1800, "LONG": 7200, "VERY_LONG": 43200}
 TL_CODE = {"SHORT": 0, "MEDIUM": 1, "LONG": 2, "VERY_LONG": 3}
 TL_MIN = [0, 1800, 7200, 43200]
@@ -563,6 +565,8 @@ def cmd_fetch(cfg, out=None):
     region, house = cfg["region"].lower(), cfg.get("house")
     if not house:
         raise ApiError("no auction house chosen yet: run  python ah_api.py detect")
+    if not server_base(cfg):
+        raise ApiError('no server scan configured: set "server" in blizzard_api.json to its address')
     txt = server_file(cfg, region, house)
     if not txt:
         raise ApiError("the server has no data file for auction house %s-%s" % (region, house))
@@ -603,6 +607,8 @@ def cmd_detect_server(cfg, faction=None):
     game = ingame_prices(db, faction)
     if len(game) < 50:
         raise ApiError("too little in-game data to compare with: do a Full Scan in the game, /reload, and retry")
+    if not server_base(cfg):
+        raise ApiError('no API key and no server scan configured: set "server" in blizzard_api.json')
     idx = server_index(cfg)
     if not idx or not idx.get("houses"):
         raise ApiError("the server's list of auction houses is not reachable")
@@ -640,8 +646,12 @@ def server_overlay(cfg, region, house, t, items):
     rates = (meta.get("soldHours") or 0) >= 1
     for key, it in items.items():
         v = srv.get(key)
-        if v and len(v) > 7:
-            it["h"] = v[7:]
+        if v and len(v) > 7:                     # every day either side has; the server wins a shared day
+            days = {}
+            for src in (it["h"], v[7:]):
+                for j in range(0, len(src) - 2, 3):
+                    days[src[j]] = (src[j + 1], src[j + 2])
+            it["h"] = [x for d in sorted(days)[-HISTORY_DAYS:] for x in (d, days[d][0], days[d][1])]
         if rates:
             it["sold"] = v[6] if v and len(v) > 6 else 0
     if rates:

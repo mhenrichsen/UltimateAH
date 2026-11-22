@@ -25,3 +25,4 @@ server_data/
 
 # Coolify API token for deploying the server scan: never commit
 coolify_api.json
+coolify_app.json

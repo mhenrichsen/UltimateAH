@@ -1,6 +1,7 @@
 {
   "client_id": "",
   "client_secret": "",
+  "server": "",
   "region": "eu",
   "wow_dir": "C:\\Program Files (x86)\\World of Warcraft\\_forever_"
 }
