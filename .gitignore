@@ -16,3 +16,6 @@ __pycache__/
 
 # the old addon folder and other local backups
 _backup/
+
+# rejected logo candidates from the design run
+media/candidates/
