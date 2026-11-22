@@ -42,6 +42,8 @@ OUT = os.path.join(ADDON, "ApiData.lua")
 HISTORY_DAYS = 14          # daily prices handed to the addon
 SOLD_DAYS = 7              # window of the units-sold-per-day estimate
 MAX_GAP = 3 * 3600         # two scans further apart than this are not compared
+MIN_COVER = 3000           # seconds of compared scans needed before sale rates are written: hourly
+                           # snapshots are a few seconds short of 3600 s apart, so not a full hour
 # the least time an auction in each bracket still has left; one that vanished sooner was
 # bought or cancelled, it cannot have run out
 MIN_LEFT = {"SHORT": 0, "MEDIUM": 1800, "LONG": 7200, "VERY_LONG": 43200}
@@ -613,6 +615,7 @@ def cmd_scan(api, cfg, out=None, now=None, force=False):
     for dd in [x for x in acc["cover"] if int(x) <= d - SOLD_DAYS]:
         del acc["cover"][dd]
     cover = sum(acc["cover"].values())
+    rates = cover >= MIN_COVER
 
     items = {}
     for key, p in table.items():
@@ -621,25 +624,27 @@ def cmd_scan(api, cfg, out=None, now=None, force=False):
             s, n, mn = acc["hist"][key][dd]
             hist += [int(dd), sig3(int(round(s / n))), sig3(mn)]
         units = sum(v[0] for v in acc["sold"].get(key, {}).values())
-        items[key] = dict(p, h=hist, sold=(units / cover * 86400) if cover >= 3600 else None)
+        items[key] = dict(p, h=hist, sold=(units / cover * 86400) if rates else None)
     # items that sold out completely still have a sale rate worth keeping
-    if cover >= 3600:
+    if rates:
         for key, days in acc["sold"].items():
             if key not in items:
                 items[key] = {"min": 0, "mkt": 0, "qty": 0, "num": 0, "top": 0, "other": 0, "h": [],
                               "sold": sum(v[0] for v in days.values()) / cover * 86400}
 
+    # the addon reads sale rates only when soldHours >= 1, so this must agree with `rates`
+    sold_hours = max(1.0, round(cover / 3600.0, 1)) if rates else 0.0
     meta = collections.OrderedDict(v=1, t=t, region=api.region, house=house,
                                    faction=cfg.get("faction") or faction_of(snap.get("name")),
-                                   auctions=len(aucs), soldHours=round(cover / 3600.0, 1))
+                                   auctions=len(aucs), soldHours=sold_hours)
     write_lua(out, meta, items)
     write_state(name + ".json.gz", {"t": t, "modified": snap.get("modified"), "auctions": aucs,
                                     "prices": {k: {"mkt": v["mkt"]} for k, v in table.items()}})
     write_state(name + "_acc.json", acc)
     write_state("last.json", {"t": t, "house": house, "auctions": len(aucs), "items": len(table),
-                              "sold_units": n_sold, "cover_hours": round(cover / 3600.0, 1)})
+                              "sold_units": n_sold, "cover_hours": sold_hours})
     log("scan done: %d auctions, %d items, %d units sold since the last scan, sale rates from %.1f h of data" % (
-        len(aucs), len(table), n_sold, cover / 3600.0))
+        len(aucs), len(table), n_sold, sold_hours))
     return 0
 
 

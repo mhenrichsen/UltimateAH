@@ -199,18 +199,27 @@ fake.commodities = [
     # 102 gone at 155: cheaper than the surviving 160 but dearer than the surviving 150 -> cancelled
     # 103 gone at 400 -> cancelled
 ]
-T1 = T0 + 3600
+# Blizzard's hourly snapshots are a couple of seconds short of an hour apart (3598 s in the first real
+# run): sale rates must still be written, and soldHours must say so, or the addon shows 0 for everything
+T1 = T0 + 3598
+DAY = 86400 / 3598.0
+
+
+def near(a, b):
+    return abs(a - b) <= 0.01 * b
+
+
 ah_api.cmd_scan(api, cfg, out=OUT, now=T1)
 G.UltimateAH_ApiData = None
 lua.execute(open(OUT, encoding="utf-8").read())
 d = G.UltimateAH_ApiData
 it = items_of(d)
-check("sold: one hour of data", d.soldHours == 1, d.soldHours)
-check("sold: partly bought commodity, cancelled ones ignored", it["4306"][7] == 120 * 24, it["4306"][7])
-check("sold: cheapest stack sold; expired and overpriced ones ignored", it["2589"][7] == 20 * 24, it["2589"][7])
+check("sold: one hour of data, even two seconds short", d.soldHours == 1, d.soldHours)
+check("sold: partly bought commodity, cancelled ones ignored", near(it["4306"][7], 120 * DAY), it["4306"][7])
+check("sold: cheapest stack sold; expired and overpriced ones ignored", near(it["2589"][7], 20 * DAY), it["2589"][7])
 check("sold: variant sale counts for the variant and the plain item",
-      it["11991:b12745"][7] == 24 and it["11991"][7] == 24 and it["11991:b900"][7] == 0, (it["11991:b12745"][7], it["11991"][7]))
-check("sold: gone while a dearer one stayed", it["7005"][7] == 24, it["7005"][7])
+      near(it["11991:b12745"][7], DAY) and near(it["11991"][7], DAY) and it["11991:b900"][7] == 0, (it["11991:b12745"][7], it["11991"][7]))
+check("sold: gone while a dearer one stayed", near(it["7005"][7], DAY), it["7005"][7])
 check("scan: new prices", it["2589"][1] == 110 and it["4306"][3] == 580)
 
 # unchanged data is not scanned twice; a long gap is not compared
@@ -245,11 +254,11 @@ e = p["4306"]
 check("import: API price replaces an older in-game price", e.min == 150 and e.qty == 580 and e.t == T1 and e.src == "api" and e.n == "Silk Cloth",
       (e.min, e.qty, e.t, e.src))
 check("import: a newer in-game price is kept, the sale rate still arrives",
-      p["2589"].min == 105 and p["2589"].sold == 480 and p["2589"].soldT == T1, (p["2589"].min, p["2589"].sold))
+      p["2589"].min == 105 and near(p["2589"].sold, 20 * DAY) and p["2589"].soldT == T1, (p["2589"].min, p["2589"].sold))
 check("import: new items and variants", p["7005"] is not None and p["11991:b12745"].min == 80000 and p["11991:b12745"].i == 11991)
 check("import: lowest other", p["4306"].minOther == 150)
 check("import: history merged", p["4306"].h[T1 // 86400][2] == 150, list(p["4306"].h.keys()))
-check("import: sale rate helper", lua.eval('UltimateAH.Api.SoldPerDay(UltimateAH.db.prices[UltimateAH:Scope()]["4306"])') == 2880)
+check("import: sale rate helper", near(lua.eval('UltimateAH.Api.SoldPerDay(UltimateAH.db.prices[UltimateAH:Scope()]["4306"])'), 120 * DAY))
 sc = lua.eval('UltimateAH.db.scans[UltimateAH:Scope()]')
 check("import: scan status", sc.kind == "API" and sc.t == T1 and sc.api.house == 113 and sc.api.soldHours == 1, (sc.kind, sc.t))
 prints = "\n".join(G.PRINTS.values())
