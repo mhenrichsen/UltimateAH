@@ -16,7 +16,7 @@ layout code with sample data. Fonts and icons differ a little from the game.
   checked in the game.
 - The 2.x work has only been tested outside the game so far: the new look, the Watch, Sell and
   Settings pages, posting auctions from the Sell page, and loading API scan data. It is covered
-  by 254 automated checks against a mocked game API and by the offline renders, but it has not
+  by 279 automated checks against a mocked game API and by the offline renders, but it has not
   been run in the live client yet. Treat 2.x as a beta.
 - The API scan script and the server scan have been run against Blizzard's real API (EU).
 
@@ -100,7 +100,7 @@ every Alliance and Horde house of the region when it has, and hands out the resu
 | `/eu-<house>.lua.gz` | What the addon loads: current prices, 14 days of daily prices, units sold per day, price patterns. |
 | `/history.db.gz` | A SQLite database: one row per auction house, item and day with the mean market price, the lowest buyout, the listed quantity and the units sold; prices and sales by hour of the day; the forecast's check per house. |
 | `/index.json` | The houses, the time of their last scan, the days of history, and how the forecast did against "unchanged". |
-| `/ml.json` | The last training of the learned forecasts: rows, errors against "unchanged", on or off. |
+| `/ml.json` | The last training of the learned forecasts, by day and by hour: rows, errors against "unchanged", how often the direction was right, on or off. |
 | `/healthz` | A small status answer for health checks. |
 
 The previous snapshot of each house (needed to see what was sold) and the log stay in the data
@@ -131,7 +131,7 @@ The server scan keeps 30 days of history, and from it works out for every item:
 | Position | Where today's price sits among the last 30 days: "high for the month", "low for the month". | 7 days |
 | Weekday | The weekday the item is usually cheapest and the one it is usually dearest, against the days around it. | about 4 weeks |
 | Hour | The hour of the day it is usually cheapest and dearest, and the hour most units sell. Only for items with at least 5 auctions. | 5 days per hour |
-| Forecast | The expected market price tomorrow and in 7 days, with the range the price in 7 days will most likely be in. Learned from every item's history: see [Learned forecasts](#learned-forecasts). | 1 to 3 weeks |
+| Forecast | The expected market price in 6 hours, tomorrow and in 7 days, with the range the price in 7 days will most likely be in. Learned from every item's history: see [Learned forecasts](#learned-forecasts). | 1 day to 3 weeks |
 
 The addon shows them in item tooltips, as a Trend column on the Prices page, under the price graph,
 and as a one-line hint on the Sell page ("usually 12% higher on Saturday", "high for the month").
@@ -164,6 +164,16 @@ After every hourly scan the service retrains its forecast models on the whole da
   training.
 - **What it costs.** With 30 days of all eight EU houses (3.6 million item-days) a training takes
   about a minute on one CPU and 420 MB, in a process of its own.
+
+**Hour by hour.** The scan also keeps 14 days of prices per scan (`hourly.db`: every item with two
+or more auctions, about 1 MB per hour for all eight houses, not handed out). The same kind of model
+learns the price 1, 6 and 24 hours ahead from them: how the price moved over the last 1 to 24 hours,
+how far it is from its 6, 24 and 72 hour mean, the gap to the lowest buyout, what is listed and
+sold, the hour and the weekday. It is checked the same way, on the latest fifth of the hours. The
+6-hour forecast goes to the addon ("~1g 20s around 21:00"); the 24-hour one stands in for
+"tomorrow" while the day-by-day forecast is off; the 1-hour one is only reported, as the earliest
+sign of whether prices can be predicted at all. They need about half a day, a day and three days of
+archive.
 
 While the learned week-ahead forecast is off, a plain one (the week's trend plus a pull towards the
 monthly median, with two weights fitted per house once a day) stands in, under the same rule.

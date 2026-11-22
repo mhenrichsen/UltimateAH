@@ -79,15 +79,17 @@ end
 --
 -- The server scan keeps 30 days of history and works out, per item: the trend of the last week,
 -- where today's price sits in the month, the weekday and the hour of the day the item is usually
--- cheapest and dearest, when it sells, and forecasts for tomorrow and a week ahead. The forecasts are
--- learned on the server from every item's history (gradient-boosted trees, retrained every hour) and
+-- cheapest and dearest, when it sells, and forecasts for 6 hours, a day and a week ahead. The forecasts
+-- are learned on the server from every item's history (gradient-boosted trees, retrained every hour) and
 -- are only sent while they beat "the price stays the same" on days the model had not seen. They
 -- arrive as ApiData's "ins" table; e.ins holds the numbers in the order of FIELDS. Weekdays and
 -- hours are UTC on the wire.
 ---------------------------------------------------------------------------
 local FIELDS = { "days", "pos", "trend", "wdLo", "wdLoPct", "wdHi", "wdHiPct", "hrLo", "hrHi", "hrPct", "hrSell", "in7",
-                 "in1", "lo7", "hi7" }
+                 "in1", "lo7", "hi7", "in6" }
 local FORECAST_MOVE = 0.08                 -- a forecast this far from today's price is worth a hint
+local SOON = 6 * 3600                      -- in6 is the price this long after the server's scan
+local SOON_MOVE = 0.05                     -- a 6-hour forecast this far from today's price is worth a hint
 local DAY_NAME = { [0] = "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" }
 local DAY_SHORT = { [0] = "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" }
 local STEADY = 10                          -- under 1% a day reads as "steady"
@@ -135,6 +137,15 @@ local function utcWeekday()
   return (math.floor(time() / 86400) + 3) % 7             -- 0 = Monday
 end
 
+-- the 6-hour forecast and the hour it is for (the player's clock), while that hour is still at
+-- least half an hour away: the data may have been fetched a while ago
+local function soon(e, p)
+  if p.in6 <= 0 or not e.insT then return nil end
+  local due = e.insT + SOON
+  if due - time() < 1800 then return nil end
+  return p.in6, clock(math.floor(due / 3600 + 0.5) % 24)
+end
+
 -- lines for a tooltip or a row's hint: { { label, text }, ... }
 function A.InsightLines(e)
   local p = A.Insight(e)
@@ -154,6 +165,8 @@ function A.InsightLines(e)
   if p.hrLo >= 0 then hr[#hr + 1] = string.format("cheapest ~%s, dearest ~%s", clock(p.hrLo), clock(p.hrHi)) end
   if p.hrSell >= 0 then hr[#hr + 1] = "sells most ~" .. clock(p.hrSell) end
   if #hr > 0 then out[#out + 1] = { "By hour", table.concat(hr, ", ") } end
+  local s6, at = soon(e, p)
+  if s6 then out[#out + 1] = { "Soon", "~" .. AL.Money(s6) .. " around " .. at } end
   local fc = {}
   if p.in1 > 0 then fc[#fc + 1] = "tomorrow ~" .. AL.Money(p.in1) end
   if p.in7 > 0 then
@@ -173,6 +186,12 @@ function A.SellAdvice(e)
     local ahead = (p.wdHi - utcWeekday()) % 7
     if ahead == 0 then return "usually dearest today (" .. DAY_NAME[p.wdHi] .. ")", "green" end
     if ahead <= 3 then return string.format("usually %d%% higher on %s", p.wdHiPct, DAY_NAME[p.wdHi]), "gold" end
+  end
+  local s6, at = soon(e, p)
+  if s6 and (e.mkt or 0) > 0 then
+    local move = s6 / e.mkt - 1
+    if move >= SOON_MOVE then return string.format("forecast: +%d%% by %s", math.floor(move * 100 + 0.5), at), "gold" end
+    if move <= -SOON_MOVE then return string.format("forecast: %d%% by %s", math.floor(move * 100 + 0.5), at), "green" end
   end
   if p.in7 > 0 and (e.mkt or 0) > 0 then
     local move = p.in7 / e.mkt - 1

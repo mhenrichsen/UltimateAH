@@ -1,6 +1,7 @@
 """Offline tests for the API auto scan: ah_api.py against a fake Blizzard API, then the addon's
 import of the file it writes (Api.lua in lupa with the mocked WoW API of test_tracker.py)."""
 import collections
+import math
 import io
 import json
 import os
@@ -287,10 +288,12 @@ ah_api.write_lua(OUTP, collections.OrderedDict(v=1, t=T2, region="eu", house=113
     "2770": dict(row, ins=[12, 40, 0, -1, 0, -1, 0, 6, 18, 9, -1, 0]),
     "8831": dict(row, ins=[30, 50, 0, -1, 0, -1, 0, -1, -1, 0, -1, 180, 165, 150, 210]),
     "8170": dict(row, ins=[30, 50, 0, -1, 0, -1, 0, -1, -1, 0, -1, 140, 0, 0, 0]),
+    "9001": dict(row, ins=[1, 50, 9999, -1, 0, -1, 0, -1, -1, 0, -1, 0, 158, 0, 0, 173]),
+    "9002": dict(row, ins=[1, 50, 9999, -1, 0, -1, 0, -1, -1, 0, -1, 0, 0, 0, 0, 144]),
     "7005": dict(row),
 })
 pm, pi, pp = ah_api.parse_file(open(OUTP, encoding="utf-8").read())
-check("patterns: the file keeps them apart from the items", len(pi) == 7 and len(pp) == 6 and pp["4306"][2] == 25 and pm["insDays"] == 30, (len(pi), len(pp)))
+check("patterns: the file keeps them apart from the items", len(pi) == 9 and len(pp) == 8 and pp["4306"][2] == 25 and pm["insDays"] == 30, (len(pi), len(pp)))
 check("patterns: parse_data still gives only the items", ah_api.parse_data(open(OUTP, encoding="utf-8").read())[1] == pi)
 lua.execute("""
 NOW = %d + 60
@@ -328,6 +331,19 @@ check("forecasts: tomorrow, a week ahead and its range in one line",
       len(fc) == 1 and fc[0].startswith("tomorrow ~") and ", in 7 days ~" in fc[0] and " (" in fc[0] and " - " in fc[0] and fc[0].endswith(")"), lines)
 adv = lua.eval('{ UltimateAH.Api.SellAdvice(P["8831"]) }')
 check("sell hint: a forecast well above today's price says waiting may pay", (adv[1], adv[2]) == ("forecast: +13% in a week", "gold"), list(adv.values()))
+AT = "%02d:00" % ((int(math.floor((T2 + 6 * 3600) / 3600.0 + 0.5)) + 2) % 24)      # six hours on, on the player's clock
+lines = [(l[1], l[2].replace("|r", "")) for l in lua.eval('UltimateAH.Api.InsightLines(P["9001"])').values()]
+check("6-hour forecast: an item too young for patterns shows it, with the hour it is for",
+      [l[0] for l in lines] == ["Soon", "Forecast"] and lines[0][1].startswith("~") and lines[0][1].endswith(" around " + AT)
+      and lines[1][1].startswith("tomorrow ~"), lines)
+adv = lua.eval('{ UltimateAH.Api.SellAdvice(P["9001"]) }')
+check("sell hint: a price expected to rise within hours says waiting may pay", (adv[1], adv[2]) == ("forecast: +8%% by %s" % AT, "gold"), list(adv.values()))
+adv = lua.eval('{ UltimateAH.Api.SellAdvice(P["9002"]) }')
+check("sell hint: a price expected to fall within hours says sell now", (adv[1], adv[2]) == ("forecast: -10%% by %s" % AT, "green"), list(adv.values()))
+lua.execute("NOW = %d" % (T2 + 6 * 3600 - 600))
+lines = [l[1] for l in lua.eval('UltimateAH.Api.InsightLines(P["9001"])').values()]
+check("6-hour forecast: gone once its hour is nearly here", lines == ["Forecast"] and lua.eval('UltimateAH.Api.SellAdvice(P["9002"])') is None, lines)
+lua.execute("NOW = %d + 60" % T2)
 adv = lua.eval('{ UltimateAH.Api.SellAdvice(P["8170"]) }')
 check("sell hint: a forecast well below today's price says sell now", (adv[1], adv[2]) == ("forecast: -12% in a week", "green"), list(adv.values()))
 check("patterns: nine days of history say little", len(list(lua.eval('UltimateAH.Api.InsightLines(P["2589"])').values())) == 0)

@@ -160,11 +160,12 @@ def write_gz(path, data):
     os.replace(tmp, path)
 
 
-def build_items(db, hk, day, table, folder=None):
+def build_items(db, hk, day, table, folder=None, hour=None):
     """the addon's item rows from today's prices plus the database's history, sale counts and price
     patterns -> (items, hours of compared scans behind the sale rates, the house's forecast check)"""
     hist, ins, samples = {}, {}, []
     learned = ah_ml.predict_house(folder, db, hk, day) if folder else {}      # {} until a training beat "unchanged"
+    ahead = ah_ml.predict_hours(folder, hk, hour) if folder and hour is not None else {}      # the same, hour by hour
     row = db.execute("SELECT day, a, b, n, err, naive, ok FROM model WHERE house = ?", (hk,)).fetchone()
     model = (row[1], row[2]) if row and row[6] else None
     refit = not row or row[0] < day                      # once a day
@@ -181,21 +182,26 @@ def build_items(db, hk, day, table, folder=None):
                 logs.append(math.log(s / n))
         if h:
             hist[key] = h
-        if len(days) >= INSIGHT_DAYS:
-            p = table.get(key)
-            if p and p["mkt"] > 0:
-                row = insight(days, logs, day, p["mkt"], profs.get(key), model)
-                f = learned.get(key)
-                if f and f[1] > 0:
-                    row[-1] = ah_api.sig3(f[1])           # the learned week ahead replaces the plain one
-                ins[key] = row + ([ah_api.sig3(f[0]), ah_api.sig3(f[2]), ah_api.sig3(f[3])] if f else [0, 0, 0])
-            if refit and zlib.crc32(key.encode("utf-8")) % FIT_SAMPLE == 0:
-                samples.extend(fit_samples(days, logs))
+        p, g = table.get(key), ahead.get(key)
+        old = len(days) >= INSIGHT_DAYS
+        if p and p["mkt"] > 0 and (old or (g and max(g[1], g[2]) > 0)):
+            # an item too young for patterns still gets its hour-ahead forecasts: a row without patterns
+            pat = insight(days, logs, day, p["mkt"], profs.get(key), model) if old else \
+                [len(days), 50, 9999, -1, 0, -1, 0, -1, -1, 0, -1, 0]
+            f = learned.get(key)
+            if f and f[1] > 0:
+                pat[-1] = ah_api.sig3(f[1])               # the learned week ahead replaces the plain one
+            pat += [ah_api.sig3(f[0]), ah_api.sig3(f[2]), ah_api.sig3(f[3])] if f else [0, 0, 0]
+            if g and pat[-3] == 0:
+                pat[-3] = ah_api.sig3(g[2])               # "tomorrow" from the hours while the days cannot say
+            ins[key] = pat + [ah_api.sig3(g[1]) if g else 0]
+        if old and refit and zlib.crc32(key.encode("utf-8")) % FIT_SAMPLE == 0:
+            samples.extend(fit_samples(days, logs))
     if refit:
         row = (day,) + fit(samples)
         db.execute("INSERT OR REPLACE INTO model (house, day, a, b, n, err, naive, ok) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (hk,) + row)
     check = {"checks": row[3], "error": round(row[4], 4), "unchanged": round(row[5], 4), "on": bool(row[6]),
-             "learned": bool(learned)}
+             "learned": bool(learned), "hours": bool(ahead)}
     since = day - ah_api.SOLD_DAYS
     cover = db.execute("SELECT COALESCE(SUM(seconds), 0) FROM cover WHERE house = ? AND day > ?", (hk, since)).fetchone()[0]
     rates = cover >= ah_api.MIN_COVER
@@ -465,7 +471,7 @@ def scan_house(api, db, folder, h, now=None, force=False):
     db.execute("UPDATE house SET ruleset = ?, faction = ?, name = ?, t = ?, modified = ?, auctions = ?, items = ? WHERE hk = ?",
                (RULESET, faction, snap.get("name") or h.get("name"), t, snap.get("modified"), len(aucs), len(table), hk))
 
-    items, sold_hours, check = build_items(db, hk, day, table, folder)
+    items, sold_hours, check = build_items(db, hk, day, table, folder, int(t // 3600))
     n_days = db.execute("SELECT COUNT(DISTINCT t / 86400) FROM scan WHERE house = ?", (hk,)).fetchone()[0]
     n_ins = sum(1 for it in items.values() if it.get("ins"))
     meta = collections.OrderedDict(v=1, t=t, region=region, house=hid, faction=faction,
@@ -484,11 +490,12 @@ def scan_house(api, db, folder, h, now=None, force=False):
             name, faction, len(aucs), len(table), n_sold, sold_hours, n_days, n_hours, n_ins,
             ("learned" if check["learned"] else "on" if check["on"] else "off") + (
                 " (error %.1f%% against %.1f%% for an unchanged price, %d checks)" % (
-                    check["error"] * 100, check["unchanged"] * 100, check["checks"]) if check["checks"] >= FIT_MIN else "")))
+                    check["error"] * 100, check["unchanged"] * 100, check["checks"]) if check["checks"] >= FIT_MIN else "")
+            + ", hour-ahead forecasts " + ("on" if check["hours"] else "off")))
     return {"region": region, "house": hid, "ruleset": RULESET, "faction": faction, "t": t,
             "modified": snap.get("modified"), "auctions": len(aucs), "items": len(table),
             "soldHours": sold_hours, "days": n_days, "hours": n_hours, "patterns": n_ins, "forecast": check,
-            "learned": check["learned"], "file": name + ".lua.gz"}
+            "learned": check["learned"], "hourAhead": check["hours"], "file": name + ".lua.gz"}
 
 
 def read_index(folder):

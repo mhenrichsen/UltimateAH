@@ -1002,6 +1002,7 @@ function UI:ShowPriceGraph(key)
     if l[1] == "Trend" then table.insert(rows[1], "Trend " .. l[2])
     elseif l[1] == "Usually" then table.insert(rows[1], "usually " .. l[2])
     elseif l[1] == "By hour" then table.insert(rows[2], "By hour: " .. l[2])
+    elseif l[1] == "Soon" then table.insert(rows[2], "soon " .. l[2])
     else table.insert(rows[3], l[1] .. ": " .. l[2]) end
   end
   local n = 0

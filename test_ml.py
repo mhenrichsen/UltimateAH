@@ -152,6 +152,103 @@ check("three days of history: the one-day forecast waits", rep["horizons"]["1"][
 check("three days of history: no day has a seven-day answer", rep["horizons"]["7"].get("note") == "no day has an answer yet", rep["horizons"]["7"])
 D = os.path.join(tmp, "empty")
 check("no database: a note, no crash", "note" in ah_ml.train(D))
+E = os.path.join(tmp, "week")
+market(E, "reverting", days=7, seed=6)                   # nothing has a change over 7 days yet: an empty column
+rep = ah_ml.train(E, now=DAY * 86400)
+check("seven days of history: the one-day forecast is trained and judged", "error" in rep["horizons"]["1"], rep["horizons"]["1"])
+
+# 6. hour by hour: the scan's archive, the 1, 6 and 24 hour forecasts
+LAST = DAY * 24 + 19                                     # the hour number of the last archived scan
+
+
+def hourly(folder, kind, hours=80, items=600, houses=(110, 113), seed=1):
+    """an hour-by-hour archive of `hours` scans, written the way the scan writes it -> the last
+    prices of the first house. kind as in market(): "reverting" or "walk", per hour"""
+    db = ah_server.connect(folder)
+    hks = [ah_server.house_key(db, "eu", {"id": hid}) for hid in houses]
+    db.commit()
+    db.close()
+    rnd = random.Random(seed)
+    first = None
+    for hk in hks:
+        base = [math.log(rnd.choice([120, 900, 4500, 30000, 250000])) for _ in range(items)]
+        x = [0.0] * items
+        table = {}
+        for i in range(hours):
+            table = {}
+            for item in range(items):
+                x[item] = (0.5 * x[item] + rnd.gauss(0, 0.04)) if kind == "reverting" else (x[item] + rnd.gauss(0, 0.02))
+                price = int(round(math.exp(base[item] + x[item])))
+                table[str(1000 + item)] = {"mkt": price, "min": max(1, int(price * 0.97)), "qty": rnd.randint(5, 400), "num": rnd.randint(2, 30)}
+            ah_server.archive_hour(folder, hk, (LAST - hours + 1 + i) * 3600 + 23 * 60, table, {})
+        if first is None:
+            first = (hk, {k: p["mkt"] for k, p in table.items()}, dict(zip(table, base)))
+    return first
+
+
+H = os.path.join(tmp, "hours")
+hk, last_price, base = hourly(H, "reverting")
+rep = ah_ml.train(H, now=DAY * 86400)
+hh = rep["hourly"]["horizons"]
+check("hour by hour: the report counts the archived hours", rep["hourly"]["hours"] == 80, rep["hourly"]["hours"])
+check("hour by hour: the 1, 6 and 24 hour forecasts beat 'unchanged' and are on",
+      all(hh[h]["on"] and hh[h]["error"] < 0.9 * hh[h]["unchanged"] for h in ("1", "6", "24")), hh)
+check("hour by hour: checked on later hours than it learned from", hh["1"]["checked_on"] > 5000 and hh["1"]["learned_from"] > 20000, hh["1"])
+check("hour by hour: the report says how often the direction was right", hh["1"]["calls"] > 100 and hh["1"]["calls_right"] > 0.7, hh["1"])
+check("hour by hour: the report reads as text", any(line.startswith("6 hours ahead: on") for line in ah_ml.describe(rep)), ah_ml.describe(rep))
+pred = ah_ml.predict_hours(H, hk, LAST)
+check("hour by hour: forecasts for every followed item", len(pred) == 600 and all(min(p) > 0 for p in pred.values()), len(pred))
+high = [k for k in last_price if last_price[k] > 1.06 * math.exp(base[k])]
+low = [k for k in last_price if last_price[k] < 0.94 * math.exp(base[k])]
+check("hour by hour: a price above its usual level is expected to come down within 6 hours",
+      len(high) > 20 and sum(pred[k][1] < last_price[k] for k in high) >= 0.9 * len(high), (len(high), sum(pred[k][1] < last_price[k] for k in high)))
+check("hour by hour: a price below its usual level is expected to rise within 6 hours",
+      len(low) > 20 and sum(pred[k][1] > last_price[k] for k in low) >= 0.9 * len(low), (len(low), sum(pred[k][1] > last_price[k] for k in low)))
+check("hour by hour: no forecasts from an hour that was not scanned", ah_ml.predict_hours(H, hk, LAST + 1) == {})
+
+
+def fake_hour(req):
+    url = req.full_url
+    if url.startswith("https://oauth.battle.net/token"):
+        return 200, json.dumps({"access_token": "TOKEN"}).encode(), {}
+    path = url[len(HOST):].split("?")[0]
+    if path.endswith("/commodities"):
+        aucs = [{"id": 100000 + int(k) * 10 + n, "item": {"id": int(k)}, "unit_price": last_price[k], "quantity": 5,
+                 "time_left": "VERY_LONG"} for k in last_price for n in range(2)]
+        return 200, json.dumps({"auctions": aucs}).encode(), {"Last-Modified": "now"}
+    if re.fullmatch(r"/data/wow/ruleset/1/auctions/110", path):
+        return 200, json.dumps({"id": 110, "name": "Alliance Auction House", "auctions": [],
+                                "commodities": {"href": HOST + path + "/commodities"}}).encode(), {"Last-Modified": "now"}
+    raise urllib.error.HTTPError(url, 404, "not found", {}, io.BytesIO(b""))
+
+
+db = ah_server.connect(H)
+entry = ah_server.scan_house(ah_api.Api(cfg, opener=fake_hour), db, H, {"id": 110, "name": "Alliance Auction House"},
+                             now=(LAST + 1) * 3600 + 23 * 60)
+db.close()
+with gzip.open(os.path.join(H, "eu-110.lua.gz"), "rt", encoding="utf-8") as f:
+    meta, items, ins = ah_api.parse_file(f.read())
+x = ins[high[0]]
+check("server scan: an item with one day of history still gets its hour-ahead forecasts",
+      len(ins) == 600 and len(x) == len(F) and x[F["days"]] == 1 and x[F["trend"]] == 9999 and x[F["in7"]] == 0, x)
+check("server scan: the price in 6 hours, and tomorrow's from the 24 hour forecast",
+      0 < x[F["in6"]] < last_price[high[0]] and x[F["in1"]] > 0 and x[F["lo7"]] == 0, (x, last_price[high[0]]))
+check("server scan: the index says the hour-ahead forecasts are on", entry.get("hourAhead") is True and entry.get("learned") is False
+      and entry.get("hours") == 81, entry)
+
+W = os.path.join(tmp, "hours_walk")
+hk2 = hourly(W, "walk", seed=2)[0]
+rep = ah_ml.train(W, now=DAY * 86400)
+hh = rep["hourly"]["horizons"]
+check("hour by hour, random market: every forecast stays off", not any(hh[h]["on"] for h in hh) and len(hh) == 3, hh)
+check("hour by hour, random market: no model, no forecasts", not os.path.exists(os.path.join(W, "ml.pkl"))
+      and ah_ml.predict_hours(W, hk2, LAST) == {})
+
+Y = os.path.join(tmp, "hours_young")
+hourly(Y, "reverting", hours=8, seed=3)
+hh = ah_ml.train(Y, now=DAY * 86400)["hourly"]["horizons"]
+check("eight hours of archive: the forecasts wait", hh["1"]["on"] is False and hh["1"].get("note") == "too little history"
+      and hh["24"].get("note") == "no hour has an answer yet", hh)
 
 print()
 print("%d failure(s)" % fails)

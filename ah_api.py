@@ -70,10 +70,13 @@ SERVER = "https://dytm1zc1vmdd7h24ebh1yae9.46.224.200.140.sslip.io"
 #            forecast did not beat "the price stays the same" on past data)
 #   in1      expected market price in 1 day, 0 = no forecast
 #   lo7/hi7  the range the price in 7 days will most likely be in (20% .. 80%), 0 = none
+#   in6      expected market price 6 hours after the file's time `t`, 0 = no forecast
 # in1, lo7 and hi7 come from the learned forecasts (ah_ml.py); so does in7 while those are on,
-# otherwise it is the plain trend-and-reversion forecast of ah_server.py
+# otherwise it is the plain trend-and-reversion forecast of ah_server.py. in6 is learned from the
+# server's hour-by-hour prices; while the day-by-day forecast for tomorrow is off, in1 is the
+# hour-by-hour one for 24 hours ahead
 INS_FIELDS = ("days", "pos", "trend", "wdLo", "wdLoPct", "wdHi", "wdHiPct", "hrLo", "hrHi", "hrPct", "hrSell", "in7",
-              "in1", "lo7", "hi7")
+              "in1", "lo7", "hi7", "in6")
 MIN_LEFT = {"SHORT": 0, "MEDIUM": 1800, "LONG": 7200, "VERY_LONG": 43200}
 TL_CODE = {"SHORT": 0, "MEDIUM": 1, "LONG": 2, "VERY_LONG": 3}
 TL_MIN = [0, 1800, 7200, 43200]

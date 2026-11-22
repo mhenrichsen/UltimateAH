@@ -68,7 +68,7 @@ same item stayed behind; a commodity listing whose quantity dropped was partly b
 
 With the server scan's 30 days of history come **price patterns**: the trend of the last week, whether
 today's price is high or low for the month, the weekday and hour an item is usually cheapest and
-dearest, when it sells, and forecasts for tomorrow and for a week ahead (with the range the price
+dearest, when it sells, and forecasts for 6 hours, a day and a week ahead (with the range the price
 will most likely be in). The forecasts are learned on the server from every item's history and
 retrained every hour. Everything shows in tooltips, as the Trend column on Prices, under the price
 graph and as a hint on the Sell page ("usually 12% higher on Saturday", "forecast: +9% in a week").
