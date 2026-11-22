@@ -55,7 +55,7 @@ MIN_COVER = 3000           # seconds of compared scans needed before sale rates 
 # bought or cancelled, it cannot have run out
 # the project's server scan (ah_server.py serve; EU region). "server" in blizzard_api.json overrides
 # it: another address to use your own, "" to use none
-SERVER = "https://uah.46-224-200-140.sslip.io"
+SERVER = "https://dytm1zc1vmdd7h24ebh1yae9.46.224.200.140.sslip.io"
 MIN_LEFT = {"SHORT": 0, "MEDIUM": 1800, "LONG": 7200, "VERY_LONG": 43200}
 TL_CODE = {"SHORT": 0, "MEDIUM": 1, "LONG": 2, "VERY_LONG": 3}
 TL_MIN = [0, 1800, 7200, 43200]
