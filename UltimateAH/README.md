@@ -1,10 +1,10 @@
-# AuctionLedger (WoW Forever)
+# Ultimate AH (WoW Forever)
 
 Tracks every auction house buy and sale on all your characters, prices the AH like TSM, graphs your
 total value (gold + items), finds buy-and-relist deals, watches prices for you, tells you when you
 are undercut and what to post your bags for.
 
-Open it with **/al**, the **minimap button** (right-click = value graph) or **Open AuctionLedger** on
+Open it with **/uah**, the **minimap button** (right-click = value graph) or **Open Ultimate AH** on
 the panel next to the auction house. The window has its own dark theme: a sidebar with every page
 (badges show undercut auctions, watch alerts and deals), stat cards, dropdown filters and switches.
 
@@ -32,7 +32,7 @@ the panel next to the auction house. The window has its own dark theme: a sideba
 ## Tools
 - **Watch**: items with a max price. When one is listed at or under it (full scan, quick scan or any
   AH search you do) you get a chat line, a raid warning and a sound. No price given = 80% of normal.
-  `/al watch Arcanite Bar 40g`, `/al unwatch Arcanite Bar`.
+  `/uah watch Arcanite Bar 40g`, `/uah unwatch Arcanite Bar`.
 - **Sell**: post auctions straight from the page. The left side lists the tradeable items in your
   bags with a post price, the AH value after the cut, how many sell per day and Post / Vendor
   advice. Click one and the right side prepares the auction: the market (cheapest from others,
@@ -42,7 +42,7 @@ the panel next to the auction house. The window has its own dark theme: a sideba
   the cheapest auction) and vendor-beats-AH prices, and **Post** puts it up. After a post the next
   item is selected, so a bag is emptied with one click per item (the game demands a click for
   every auction). The auction house must be open; right-click a row to search it there.
-  **Sell junk to vendor** (or `/al junk`, or the auto option) sells grey items and items a vendor
+  **Sell junk to vendor** (or `/uah junk`, or the auto option) sells grey items and items a vendor
   pays more for. Item tooltips show the post price and your stack's value too.
 - **Settings**: switches for tooltips, guild/whisper replies, auto scan, undercut notices, watch
   alerts, auto-junk and the minimap button, plus what is stored.
@@ -56,10 +56,10 @@ the panel next to the auction house. The window has its own dark theme: a sideba
 - Anything you search in the AH yourself also refreshes that item's price.
 
 ## Auto scans (Blizzard's API) and "Sold/day"
-An addon cannot reach the internet, so `ah_api.py` (from the addon's GitHub repository, https://github.com/mhenrichsen/AuctionLedger) does it from
+An addon cannot reach the internet, so `ah_api.py` (from the addon's GitHub repository, https://github.com/mhenrichsen/UltimateAH) does it from
 outside the game. It downloads your whole auction house from Blizzard's Game Data API, computes the
 same prices as a Full Scan, and writes `ApiData.lua` into this folder. The addon loads it at login
-or `/reload` (`/al api` shows what is loaded). No visit to the auction house needed.
+or `/reload` (`/uah api` shows what is loaded). No visit to the auction house needed.
 
 Comparing one hourly scan with the next also gives what the game never shows: **how many units of
 each item are sold per day** (the Sold/day column on Prices, and a tooltip line). It is an estimate.
@@ -79,12 +79,12 @@ The Forever API is not documented by Blizzard yet; the script uses the paths the
 ## Price check in guild chat and whispers
 When anyone in your guild writes **`AH <item>`** (item name, part of a name, a shift-clicked link
 or an item ID), the addon answers in guild chat with your latest data, e.g.
-`[AL] [Arcanite Bar]: market 44g 45s 97c, lowest 41g 49s, top-100 avg 44g 72s 20c, 14d avg 44g 48s 39c, 65 listed (scanned 5m ago)`.
+`[UAH] [Arcanite Bar]: market 44g 45s 97c, lowest 41g 49s, top-100 avg 44g 72s 20c, 14d avg 44g 48s 39c, 65 listed (scanned 5m ago)`.
 `AH <item> x20` adds what buying 20 costs right now (cheapest auctions first, from the last full
 scan). `AH help` explains it. The same works as a whisper to you, answered by whisper.
 Only an uppercase "AH " at the start counts ("ah ok" is ignored). If several guildies run the addon,
-only one answers. Replies are throttled. `/al guild` and `/al whispers` turn them on/off;
-`/al ah <item>` previews the reply only to you.
+only one answers. Replies are throttled. `/uah guild` and `/uah whispers` turn them on/off;
+`/uah ah <item>` previews the reply only to you.
 
 ## Characters on different WoW accounts
 WoW stores addon data per account folder. To see characters from both accounts together, run
@@ -92,6 +92,6 @@ WoW stores addon data per account folder. To see characters from both accounts t
 character-select screen.
 
 ## Commands
-`/al` window - `/al scan [quick|deep]` - `/al deals` - `/al watch <item> <price>` - `/al unwatch <item>` -
-`/al sell` - `/al junk` - `/al value` - `/al price <item>` - `/al autoscan` - `/al guild` - `/al whispers` -
-`/al ah <item> [x20]` - `/al tooltip` - `/al minimap` - `/al debug` - `/al errors`
+`/uah` window - `/uah scan [quick|deep]` - `/uah deals` - `/uah watch <item> <price>` - `/uah unwatch <item>` -
+`/uah sell` - `/uah junk` - `/uah value` - `/uah price <item>` - `/uah autoscan` - `/uah guild` - `/uah whispers` -
+`/uah ah <item> [x20]` - `/uah tooltip` - `/uah minimap` - `/uah debug` - `/uah errors`

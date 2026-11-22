@@ -1,4 +1,4 @@
-"""Offline renderer for AuctionLedger's UI.
+"""Offline renderer for UltimateAH's UI.
 
 Runs the addon (TOC order) against a mock of the WoW frame API that records every region's
 anchors, size, colours, textures and text, resolves the layout like the client does, and draws it
@@ -16,7 +16,7 @@ import sys
 import lupa
 from PIL import Image, ImageDraw, ImageFont
 
-ADDON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AuctionLedger")
+ADDON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "UltimateAH")
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCREEN_W, SCREEN_H = 1600, 900
 S = 1.5                      # pixels per UI unit
@@ -204,7 +204,7 @@ TooltipDataProcessor = { AddTooltipPostCall = function(_, fn) TOOLTIPFN = fn end
 """
 
 DATA = r"""
-local A = AuctionLedger
+local A = UltimateAH
 local scope = A:Scope()
 math.randomseed(7)
 local ids = {}
@@ -724,42 +724,42 @@ def main():
         return seg_width(parse_markup(str(o.text or ""), None), pil_font(size)) / S
     G.MEASURE = measure
     AL = lua.table()
-    G.AuctionLedger = AL
-    toc = open(os.path.join(ADDON, "AuctionLedger.toc"), encoding="utf-8").read().splitlines()
+    G.UltimateAH = AL
+    toc = open(os.path.join(ADDON, "UltimateAH.toc"), encoding="utf-8").read().splitlines()
     loader = lua.eval("function(src, name) return assert(load(src, name)) end")
     for f in [l.strip() for l in toc if l.strip().endswith(".lua")]:
-        loader(open(os.path.join(ADDON, f), encoding="utf-8").read(), "@" + f)("AuctionLedger", AL)
-    G.FIRE("ADDON_LOADED", "AuctionLedger")
+        loader(open(os.path.join(ADDON, f), encoding="utf-8").read(), "@" + f)("UltimateAH", AL)
+    G.FIRE("ADDON_LOADED", "UltimateAH")
     G.FIRE("PLAYER_LOGIN")
     G.RUNTIMERS()
     lua.execute(DATA)
-    lua.execute("AuctionLedger.db.settings.pos = nil")
+    lua.execute("UltimateAH.db.settings.pos = nil")
     names = pages or list(AL.UI.TAB_NAMES.values())
     fw, fh = 1190, 680
     crop = ((SCREEN_W - fw) / 2 - 20, (SCREEN_H - fh) / 2 - 20, (SCREEN_W + fw) / 2 + 20, (SCREEN_H + fh) / 2 + 20)
     for n in names:
         if n == "PriceGraph":
-            lua.execute("AuctionLedger.UI:Toggle('Prices'); AuctionLedger.UI:ShowPriceGraph('12360')")
+            lua.execute("UltimateAH.UI:Toggle('Prices'); UltimateAH.UI:ShowPriceGraph('12360')")
         elif n == "AHPanel":
             lua.execute("AuctionHouseFrame = CreateFrame('Frame'); AuctionHouseFrame:SetSize(800, 520); AuctionHouseFrame:SetPoint('CENTER', -150, 0)"
-                        " ; AuctionLedger.ahOpen = true; AuctionLedger.UI:AttachToAH(); AuctionLedger.UI:UpdateScanStatus()"
-                        " ; if AuctionLedger.UI.frame then AuctionLedger.UI.frame:Hide() end")
+                        " ; UltimateAH.ahOpen = true; UltimateAH.UI:AttachToAH(); UltimateAH.UI:UpdateScanStatus()"
+                        " ; if UltimateAH.UI.frame then UltimateAH.UI.frame:Hide() end")
         elif n == "Menu":
-            lua.execute("AuctionLedger.UI:Toggle('Ledger'); local b = AuctionLedger.UI.lbar.type; b.scripts.OnClick(b, 'LeftButton')")
+            lua.execute("UltimateAH.UI:Toggle('Ledger'); local b = UltimateAH.UI.lbar.type; b.scripts.OnClick(b, 'LeftButton')")
         elif n == "Sell":
-            lua.execute("SELL_DEMO(); AuctionLedger.UI:Toggle('Sell'); AuctionLedger.UI:Refresh(); AuctionLedger.ahOpen = false")
+            lua.execute("SELL_DEMO(); UltimateAH.UI:Toggle('Sell'); UltimateAH.UI:Refresh(); UltimateAH.ahOpen = false")
         else:
-            lua.execute("AuctionLedger.UI:Toggle(%r); AuctionLedger.UI:Refresh()" % n)
+            lua.execute("UltimateAH.UI:Toggle(%r); UltimateAH.UI:Refresh()" % n)
         if os.environ.get("AL_LUA"):          # debugging aid: run some Lua after the page is up
             lua.execute(os.environ["AL_LUA"])
-        errs = [str(G.AuctionLedger.errors[i]) for i in range(1, len(G.AuctionLedger.errors) + 1)]
+        errs = [str(G.UltimateAH.errors[i]) for i in range(1, len(G.UltimateAH.errors) + 1)]
         out = os.path.join(outdir, n + ".png")
         render(out, None if n == "AHPanel" else crop)
         print(out, "errors:" if errs else "", errs[-3:] if errs else "")
         if n == "PriceGraph":
-            lua.execute("AuctionLedger.UI.pgraph:Hide()")
+            lua.execute("UltimateAH.UI.pgraph:Hide()")
         if n == "Menu":
-            lua.execute("AuctionLedger.W.CloseMenu()")
+            lua.execute("UltimateAH.W.CloseMenu()")
 
 
 if __name__ == "__main__":

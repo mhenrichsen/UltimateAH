@@ -5,7 +5,7 @@ import sys
 
 import lupa
 
-ADDON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AuctionLedger")
+ADDON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "UltimateAH")
 lua = lupa.LuaRuntime()
 check = lua.eval("function(src, name) local f, err = (loadstring or load)(src, name); return err end")
 bad = 0

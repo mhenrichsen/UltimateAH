@@ -1,4 +1,4 @@
--- AuctionLedger: deal finder
+-- Ultimate AH: deal finder
 --
 -- After a Full Scan every auction of every item is known. For each item a reference price is taken
 -- (the 14-day average market value; without history, the average of the cheapest 100 auctions).
@@ -146,7 +146,7 @@ AL:On("AL_SCAN_DONE", function(kind)
       local n = 0
       for _, d in ipairs(list or {}) do if d.profit >= cfg.minProfit and d.roi >= cfg.minROI then n = n + 1 end end
       if n > 0 then
-        AL:Print(string.format("deal finder: %d deals, best %s profit (%s) - /al deals", n,
+        AL:Print(string.format("deal finder: %d deals, best %s profit (%s) - /uah deals", n,
           AL.Money(list[1].profit), list[1].name or "?"))
       end
     end)

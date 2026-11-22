@@ -1,4 +1,4 @@
--- AuctionLedger: total value tracking (gold + what your items are worth), per character over time
+-- Ultimate AH: total value tracking (gold + what your items are worth), per character over time
 --
 -- Inventory is remembered per character (bags always, bank when you open it, mail when you open
 -- the mailbox, auctions from the AH). Items are valued at the scanned market price; soulbound

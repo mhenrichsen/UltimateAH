@@ -13,3 +13,6 @@ renders/AHPanel_crop.png
 __pycache__/
 *.pyc
 *.zip
+
+# the old addon folder and other local backups
+_backup/

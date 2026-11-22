@@ -12,7 +12,7 @@ import shutil
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SRC = os.path.join(HERE, "AuctionLedger")
+SRC = os.path.join(HERE, "UltimateAH")
 WOW = r"C:\Program Files (x86)\World of Warcraft\_forever_"
 
 
@@ -24,7 +24,7 @@ def main():
             wow = json.load(f).get("wow_dir") or wow
     if len(sys.argv) > 1:
         wow = sys.argv[1]
-    dst = os.path.join(wow, "Interface", "AddOns", "AuctionLedger")
+    dst = os.path.join(wow, "Interface", "AddOns", "UltimateAH")
     if not os.path.isdir(os.path.join(wow, "Interface", "AddOns")):
         sys.exit("no AddOns folder under " + wow)
     os.makedirs(dst, exist_ok=True)

@@ -1,4 +1,4 @@
--- AuctionLedger: main window (Ledger / Summary / Listings / Prices), AH side panel, tooltips
+-- Ultimate AH: main window (Ledger / Summary / Listings / Prices), AH side panel, tooltips
 local _, AL = ...
 local W = AL.W
 local UI = {}
@@ -139,7 +139,7 @@ local PAGES = {
 function UI:Create()
   if self.frame then return end
   local C = W.C
-  local f = CreateFrame("Frame", "AuctionLedgerFrame", UIParent)
+  local f = CreateFrame("Frame", "UltimateAHFrame", UIParent)
   f:SetSize(FRAME_W, FRAME_H)
   f:SetPoint("CENTER")
   f:SetFrameStrata("HIGH")
@@ -158,7 +158,7 @@ function UI:Create()
     AL.db.settings.pos = { p, rp, x, y }
   end)
   f:Hide()
-  tinsert(UISpecialFrames, "AuctionLedgerFrame")
+  tinsert(UISpecialFrames, "UltimateAHFrame")
   self.frame = f
 
   -- sidebar
@@ -173,11 +173,11 @@ function UI:Create()
 
   local logo = W.Circle(side, 28, C.accent)
   logo:SetPoint("TOPLEFT", 18, -20)
-  local logoTxt = W.Label(side, "AL", "ALFontBright")
+  local logoTxt = W.Label(side, "UA", "UAHFontBright")
   logoTxt:SetPoint("CENTER", logo, "CENTER", 0, 0)
-  local title = W.Label(side, "AuctionLedger", "ALFontH2")
+  local title = W.Label(side, "Ultimate AH", "UAHFontH2")
   title:SetPoint("LEFT", logo, "RIGHT", 10, 6)
-  local ver = W.Label(side, "Auction house toolkit", "ALFontLabel")
+  local ver = W.Label(side, "Auction house toolkit", "UAHFontLabel")
   ver:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -2)
 
   self.views, self.tabs = {}, {}
@@ -185,7 +185,7 @@ function UI:Create()
   for _, n in ipairs(UI.TAB_NAMES) do
     if n == "Ledger" or n == "Watch" then
       if n == "Watch" then y = y - 10 end
-      local sep = W.Label(side, n == "Ledger" and "OVERVIEW" or "TOOLS", "ALFontLabel")
+      local sep = W.Label(side, n == "Ledger" and "OVERVIEW" or "TOOLS", "UAHFontLabel")
       sep:SetPoint("TOPLEFT", 22, y)
       y = y - 18
     end
@@ -208,14 +208,14 @@ function UI:Create()
     b.icon:SetPoint("LEFT", 14, 0)
     b.icon:SetTexture("Interface\\Icons\\" .. PAGES[n][1])
     b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    b.text = W.Label(b, n, "ALFontBody")
+    b.text = W.Label(b, n, "UAHFontBody")
     b.text:SetPoint("LEFT", b.icon, "RIGHT", 12, 0)
     -- badge (counts: undercut auctions, watch alerts, deals)
     b.badge = CreateFrame("Frame", nil, b)
     b.badge:SetSize(26, 16)
     b.badge:SetPoint("RIGHT", -10, 0)
     b.badge.bg = W.Fill(b.badge, C.accent)
-    b.badge.fs = W.Label(b.badge, "", "ALFontLabel")
+    b.badge.fs = W.Label(b.badge, "", "UAHFontLabel")
     b.badge.fs:SetPoint("CENTER", 0, 0)
     b.badge.fs:SetTextColor(1, 1, 1)
     b.badge:Hide()
@@ -234,19 +234,19 @@ function UI:Create()
   card:SetPoint("BOTTOMLEFT", 10, 10)
   card:SetPoint("BOTTOMRIGHT", -11, 10)
   card:SetHeight(74)
-  local cl = W.Label(card, "ACCOUNT VALUE", "ALFontLabel")
+  local cl = W.Label(card, "ACCOUNT VALUE", "UAHFontLabel")
   cl:SetPoint("TOPLEFT", 12, -10)
-  self.acctValue = W.Label(card, "", "ALFontH2")
+  self.acctValue = W.Label(card, "", "UAHFontH2")
   self.acctValue:SetPoint("TOPLEFT", 12, -26)
-  self.acctNote = W.Label(card, "", "ALFontMuted")
+  self.acctNote = W.Label(card, "", "UAHFontMuted")
   self.acctNote:SetPoint("TOPLEFT", 12, -50)
 
   -- page header
-  self.pageTitle = W.Label(f, "", "ALFontH1")
+  self.pageTitle = W.Label(f, "", "UAHFontH1")
   self.pageTitle:SetPoint("TOPLEFT", SIDE_W + 24, -22)
-  self.pageDesc = W.Label(f, "", "ALFontMuted")
+  self.pageDesc = W.Label(f, "", "UAHFontMuted")
   self.pageDesc:SetPoint("TOPLEFT", SIDE_W + 24, -52)
-  self.subtitle = W.Label(f, "", "ALFontMuted")
+  self.subtitle = W.Label(f, "", "UAHFontMuted")
   self.subtitle:SetPoint("TOPRIGHT", -52, -30)
   self.subtitle:SetJustifyH("RIGHT")
   local close = W.Close(f, function() f:Hide() end)
@@ -413,7 +413,7 @@ function UI:BuildLedger(v)
   self.ltable:SetPoint("TOPLEFT", 0, -114)
   self.ltable.emptyText = "No transactions yet. Buy or sell something on the auction house and it shows up here."
   -- right-click: delete a wrong entry (asks first)
-  StaticPopupDialogs.AUCTIONLEDGER_DELETE = {
+  StaticPopupDialogs.ULTIMATEAH_DELETE = {
     text = "Delete this ledger entry?\n\n%s",
     button1 = DELETE or "Delete", button2 = CANCEL or "Cancel",
     OnAccept = function(_, rec)
@@ -426,7 +426,7 @@ function UI:BuildLedger(v)
     if btn == "RightButton" and d.rec then
       local r = d.rec
       local desc = string.format("%s %s x%s (%s)", TYPE_LABEL[r.type] or r.type, r.name or AL.ItemName(r.item, r.link) or "?", tostring(r.qty or "?"), AL.Money(r.total or 0, true))
-      StaticPopup_Show("AUCTIONLEDGER_DELETE", desc, nil, r)
+      StaticPopup_Show("ULTIMATEAH_DELETE", desc, nil, r)
     end
   end
 end
@@ -484,7 +484,7 @@ function UI:BuildSummary(v)
   local nChars = 0
   for _ in pairs(AL.db.chars) do nChars = nChars + 1 end
   local charRows = math.max(2, math.min(nChars + 1, 6))
-  local h1 = W.Label(v, "PER CHARACTER", "ALFontLabel")
+  local h1 = W.Label(v, "PER CHARACTER", "UAHFontLabel")
   h1:SetPoint("TOPLEFT", 0, -42)
   self.stable = W.Table(v, {
     { title = "Character", width = 150 },
@@ -497,7 +497,7 @@ function UI:BuildSummary(v)
     { title = "Gold now", width = 130, justify = "RIGHT" },
   }, charRows)
   self.stable:SetPoint("TOPLEFT", 0, -58)
-  local h2 = W.Label(v, "ITEMS  -  PROFIT = SOLD AFTER CUT - BOUGHT", "ALFontLabel")
+  local h2 = W.Label(v, "ITEMS  -  PROFIT = SOLD AFTER CUT - BOUGHT", "UAHFontLabel")
   local itemsTop = -58 - (charRows + 1) * W.ROW_H - 28
   h2:SetPoint("TOPLEFT", 0, itemsTop)
   self.sitems = W.Table(v, {
@@ -599,7 +599,7 @@ function UI:BuildValue(v)
   self.vcards = W.StatRow(cards, WIDTH - 56, { "Total value", "Gold", "Bags + bank", "Mail", "On the AH" })
   self.vgraph = W.Graph(v, WIDTH - 56, 230, shortMoney)
   self.vgraph:SetPoint("TOPLEFT", 0, -112)
-  local legend = W.Label(v, W.ACCENT .. "——|r  Total        " .. W.GOLD .. "——|r  Gold        " .. W.GREEN .. "——|r  Items", "ALFontMuted")
+  local legend = W.Label(v, W.ACCENT .. "——|r  Total        " .. W.GOLD .. "——|r  Gold        " .. W.GREEN .. "——|r  Items", "UAHFontMuted")
   legend:SetPoint("TOPRIGHT", self.vgraph, "BOTTOMRIGHT", 0, -6)
   self.vtable = W.Table(v, {
     { title = "Character", width = 150 },
@@ -700,7 +700,7 @@ function UI:BuildInventory(v)
   self.ichar:SetPoint("TOPLEFT", 0, 0)
   self.isearch = W.Edit(v, 240, "Search items", function(t) UI.invSearch = (t or ""):lower(); UI:Refresh() end)
   self.isearch:SetPoint("LEFT", self.ichar, "RIGHT", 8, 0)
-  self.itot = W.Label(v, "", "ALFontH2")
+  self.itot = W.Label(v, "", "UAHFontH2")
   self.itot:SetPoint("TOPRIGHT", -16, -4)
   self.itot:SetJustifyH("RIGHT")
   local note = W.Label(v, "Tradeable items only, valued at the scanned market price. The bank is remembered from the last visit.", "GameFontDisableSmall")
@@ -762,7 +762,7 @@ function UI:BuildListings(v)
   cards:SetPoint("TOPLEFT", 0, 0)
   cards:SetSize(WIDTH - 56, 60)
   self.listCards = W.StatRow(cards, WIDTH - 56, { "Active auctions", "Worth at buyout", "Undercut", "Sold - in the mail" })
-  local info = W.Label(v, "As seen the last time each character opened the auction house; undercuts come from the latest scan.", "ALFontMuted")
+  local info = W.Label(v, "As seen the last time each character opened the auction house; undercuts come from the latest scan.", "UAHFontMuted")
   info:SetPoint("TOPLEFT", 0, -72)
   self.ltab2 = W.Table(v, {
     { title = "Character", width = 136 },
@@ -876,7 +876,7 @@ function UI:BuildPrices(v)
   self.pquick:SetPoint("LEFT", self.pfull, "RIGHT", 8, 0)
   self.pdeep = W.Button(v, "Deep Scan", 100, function() AL.Scanner:Deep() end)
   self.pdeep:SetPoint("LEFT", self.pquick, "RIGHT", 8, 0)
-  self.pstatus = W.Label(v, "", "ALFontMuted")
+  self.pstatus = W.Label(v, "", "UAHFontMuted")
   self.pstatus:SetPoint("LEFT", self.pdeep, "RIGHT", 14, 0)
   self.pstatus:SetWidth(340)               -- one anchor: a second one on the page's edge fights over the height
   self.pstatus:SetJustifyH("LEFT")
@@ -956,13 +956,13 @@ function UI:ShowPriceGraph(key)
     f.icon:SetSize(32, 32)
     f.icon:SetPoint("TOPLEFT", 18, -18)
     f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    f.title = W.Label(f, "", "ALFontH2")
+    f.title = W.Label(f, "", "UAHFontH2")
     f.title:SetPoint("TOPLEFT", 60, -18)
-    f.sub = W.Label(f, "", "ALFontMuted")
+    f.sub = W.Label(f, "", "UAHFontMuted")
     f.sub:SetPoint("TOPLEFT", 60, -38)
     f.graph = W.Graph(f, 644, 280, shortMoney)
     f.graph:SetPoint("TOPLEFT", 18, -62)
-    local legend = W.Label(f, W.ACCENT .. "——|r  Market        " .. W.GOLD .. "——|r  Lowest buyout", "ALFontMuted")
+    local legend = W.Label(f, W.ACCENT .. "——|r  Market        " .. W.GOLD .. "——|r  Lowest buyout", "UAHFontMuted")
     legend:SetPoint("BOTTOMRIGHT", -18, 12)
     self.pgraph = f
   end
@@ -1048,7 +1048,7 @@ function UI:BuildDeals(v)
   self.droi:SetPoint("LEFT", self.dprofit, "RIGHT", 8, 0)
   self.dafford = W.Cycle(v, "Show", 190, { { false, "All deals" }, { true, "Affordable now" }, { "sure", "Confident only" } }, function() UI:Refresh() end)
   self.dafford:SetPoint("LEFT", self.droi, "RIGHT", 8, 0)
-  self.dinfo = W.Label(v, "", "ALFontH2")
+  self.dinfo = W.Label(v, "", "UAHFontH2")
   self.dinfo:SetPoint("TOPRIGHT", -16, -4)
   self.dinfo:SetJustifyH("RIGHT")
   local help = W.Label(v, "Flip: buy the auctions listed below the normal price and relist just under it (profit after the 5% AH cut). " ..
@@ -1123,7 +1123,7 @@ AL:On("AL_DEALS", queueRefresh)
 ---------------------------------------------------------------------------
 function UI:MinimapButton()
   if self.mmb or not Minimap then return end
-  local b = CreateFrame("Button", "AuctionLedgerMinimapButton", Minimap)
+  local b = CreateFrame("Button", "UltimateAHMinimapButton", Minimap)
   b:SetSize(32, 32)
   b:SetFrameStrata("MEDIUM")
   b:SetFrameLevel(8)
@@ -1195,10 +1195,10 @@ function UI:AttachToAH()
   W.Shadow(p)
   local logo = W.Circle(p, 20, W.C.accent)
   logo:SetPoint("TOPLEFT", 14, -12)
-  local lt = W.Label(p, "AL", "ALFontLabel")
+  local lt = W.Label(p, "UA", "UAHFontLabel")
   lt:SetPoint("CENTER", logo, "CENTER", 0, 0)
   lt:SetTextColor(1, 1, 1)
-  local title = W.Label(p, "AuctionLedger", "ALFontH2")
+  local title = W.Label(p, "Ultimate AH", "UAHFontH2")
   title:SetPoint("LEFT", logo, "RIGHT", 8, 0)
   self.ahFull = W.Button(p, "Full Scan", 172, function() AL.Scanner:Full() end, "primary")
   self.ahFull:SetPoint("TOP", 0, -44)
@@ -1206,7 +1206,7 @@ function UI:AttachToAH()
   self.ahQuick:SetPoint("TOP", self.ahFull, "BOTTOM", 0, -6)
   self.ahDeep = W.Button(p, "Deep Scan (my items)", 172, function() AL.Scanner:Deep() end)
   self.ahDeep:SetPoint("TOP", self.ahQuick, "BOTTOM", 0, -6)
-  local open = W.Button(p, "Open AuctionLedger", 172, function() UI:Toggle() end)
+  local open = W.Button(p, "Open Ultimate AH", 172, function() UI:Toggle() end)
   open:SetPoint("TOP", self.ahDeep, "BOTTOM", 0, -6)
   local sep = p:CreateTexture(nil, "BORDER")
   sep:SetColorTexture(W.C.border[1], W.C.border[2], W.C.border[3], 1)
@@ -1215,14 +1215,14 @@ function UI:AttachToAH()
   sep:SetHeight(1)
   self.ahRows = {}
   for i, l in ipairs({ "Last scan", "Deals", "Best deal", "Undercut" }) do
-    local k = W.Label(p, l, "ALFontMuted")
+    local k = W.Label(p, l, "UAHFontMuted")
     k:SetPoint("TOPLEFT", 14, -164 - i * 21)
-    local val = W.Label(p, "", "ALFontBody")
+    local val = W.Label(p, "", "UAHFontBody")
     val:SetPoint("TOPRIGHT", -14, -164 - i * 21)
     val:SetJustifyH("RIGHT")
     self.ahRows[i] = val
   end
-  local st = W.Label(p, "", "ALFontMuted")
+  local st = W.Label(p, "", "UAHFontMuted")
   st:SetPoint("TOPLEFT", 14, -278)
   -- hover help for the three scan kinds
   local tips = {
@@ -1270,14 +1270,14 @@ local function addTooltip(tt, link)
   if not e and not st then return end
   tt:AddLine(" ")
   if e then
-    tt:AddDoubleLine("|cff33ccffAL|r Market / Min", AL.Money(e.mkt) .. " / " .. AL.Money(e.min), 1, 1, 1, 1, 1, 1)
+    tt:AddDoubleLine("|cff33ccffUAH|r Market / Min", AL.Money(e.mkt) .. " / " .. AL.Money(e.min), 1, 1, 1, 1, 1, 1)
     local avg = AL.Scanner.HistoryAvg(e)
-    if e.top then tt:AddDoubleLine("|cff33ccffAL|r Top-100 avg", AL.Money(e.top), 1, 1, 1, 1, 1, 1) end
+    if e.top then tt:AddDoubleLine("|cff33ccffUAH|r Top-100 avg", AL.Money(e.top), 1, 1, 1, 1, 1, 1) end
     local sold = AL.Api and AL.Api.SoldPerDay(e)
     if sold then
-      tt:AddDoubleLine("|cff33ccffAL|r Sold per day", sold > 0 and ("~" .. AL.Api.SoldText(sold)) or "|cff999999none seen|r", 1, 1, 1, 1, 1, 1)
+      tt:AddDoubleLine("|cff33ccffUAH|r Sold per day", sold > 0 and ("~" .. AL.Api.SoldText(sold)) or "|cff999999none seen|r", 1, 1, 1, 1, 1, 1)
     end
-    tt:AddDoubleLine("|cff33ccffAL|r 14-day avg", (avg and AL.Money(avg) or "-") .. "  |cff999999(" .. ago(e.t) .. ", " .. (e.qty or 0) .. " up)|r", 1, 1, 1, 1, 1, 1)
+    tt:AddDoubleLine("|cff33ccffUAH|r 14-day avg", (avg and AL.Money(avg) or "-") .. "  |cff999999(" .. ago(e.t) .. ", " .. (e.qty or 0) .. " up)|r", 1, 1, 1, 1, 1, 1)
     if AL.db.settings.tooltipPost ~= false and AL.Suggest then
       local s = AL.Suggest(id, link)
       if s.post then
@@ -1288,19 +1288,19 @@ local function addTooltip(tt, link)
           local ok, info = pcall(C_Container.GetContainerItemInfo, owner:GetBagID(), owner:GetID())
           if ok and info and info.stackCount then count = info.stackCount end
         end
-        tt:AddDoubleLine("|cff33ccffAL|r Post at", AL.Money(s.post) .. (count > 1 and ("  |cff999999(x" .. count .. " = " ..
+        tt:AddDoubleLine("|cff33ccffUAH|r Post at", AL.Money(s.post) .. (count > 1 and ("  |cff999999(x" .. count .. " = " ..
           AL.Money(math.floor(s.post * count * 0.95)) .. " after cut)|r") or ""), 1, 1, 1, 1, 1, 1)
-        if s.advice == "vendor" then tt:AddLine("|cff33ccffAL|r |cffffd100A vendor pays more than the AH|r") end
+        if s.advice == "vendor" then tt:AddLine("|cff33ccffUAH|r |cffffd100A vendor pays more than the AH|r") end
       end
     end
     local w = AL.Watch and AL.Watch:For(AL.KeyFromLink(link, id) or id)
-    if w then tt:AddDoubleLine("|cff33ccffAL|r Watching at", AL.Money(w.max), 1, 1, 1, 0.35, 1, 0.35) end
+    if w then tt:AddDoubleLine("|cff33ccffUAH|r Watching at", AL.Money(w.max), 1, 1, 1, 0.35, 1, 0.35) end
   end
   if st and (st.bq > 0 or st.sq > 0) then
     local parts = {}
     if st.bq > 0 then parts[#parts + 1] = string.format("bought %d @ %s", st.bq, AL.Money(st.bt / st.bq)) end
     if st.sq > 0 then parts[#parts + 1] = string.format("sold %d @ %s", st.sq, AL.Money(st.st / st.sq)) end
-    tt:AddDoubleLine("|cff33ccffAL|r You", table.concat(parts, ", "), 1, 1, 1, 1, 1, 1)
+    tt:AddDoubleLine("|cff33ccffUAH|r You", table.concat(parts, ", "), 1, 1, 1, 1, 1, 1)
   end
 end
 
@@ -1328,7 +1328,7 @@ AL:Command("tooltip", "toggle price lines in item tooltips", function()
   AL.db.settings.tooltip = not AL.db.settings.tooltip
   AL:Print("tooltip lines", AL.db.settings.tooltip and "on" or "off")
 end)
-AL:Command("price", "print the price of an item: /al price <item link or name>", function(arg)
+AL:Command("price", "print the price of an item: /uah price <item link or name>", function(arg)
   local key = AL.ItemID(arg) or AL:IdForName(arg)
   local e = key and AL.Scanner:ForItem(arg:find("|H") and arg or key)
   if not e then

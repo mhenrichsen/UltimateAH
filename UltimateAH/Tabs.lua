@@ -1,4 +1,4 @@
--- AuctionLedger: Watch, Sell and Settings pages
+-- Ultimate AH: Watch, Sell and Settings pages
 local _, AL = ...
 local W, UI = AL.W, AL.UI
 local WIDTH = UI.WIDTH
@@ -43,11 +43,11 @@ function UI:BuildWatch(v)
   self.witem:SetScript("OnEnterPressed", function() self.wmax:SetFocus() end)
   local b = W.Button(v, "Add to watchlist", 140, add, "primary")
   b:SetPoint("LEFT", self.wmax, "RIGHT", 8, 0)
-  self.winfo = W.Label(v, "", "ALFontH2")
+  self.winfo = W.Label(v, "", "UAHFontH2")
   self.winfo:SetPoint("TOPRIGHT", -16, -4)
   self.winfo:SetJustifyH("RIGHT")
   local help = W.Label(v, "Alerts come as a chat line, a raid warning and a sound - after a scan or while you search the AH. " ..
-    "No price = 80% of normal.  Left-click a row: search it.  Right-click: remove.", "ALFontMuted")
+    "No price = 80% of normal.  Left-click a row: search it.  Right-click: remove.", "UAHFontMuted")
   help:SetPoint("TOPLEFT", 0, -36)
   help:SetWidth(PAGE_W)
   self.wtable = W.Table(v, {
@@ -159,11 +159,11 @@ function UI:BuildSell(v)
   p.icon:SetSize(36, 36)
   p.icon:SetPoint("TOPLEFT", 16, -16)
   p.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-  p.name = W.Label(p, "", "ALFontH2")
+  p.name = W.Label(p, "", "UAHFontH2")
   p.name:SetPoint("TOPLEFT", 62, -17)
   p.name:SetWidth(PW - 78)
   p.name:SetWordWrap(false)
-  p.sub = W.Label(p, "", "ALFontMuted")
+  p.sub = W.Label(p, "", "UAHFontMuted")
   p.sub:SetPoint("TOPLEFT", 62, -38)
   p.sub:SetWidth(PW - 78)
   p.sub:SetWordWrap(false)
@@ -175,14 +175,14 @@ function UI:BuildSell(v)
     d:SetSize(PW - 32, 1)
   end
   local function section(y, text)
-    local l = W.Label(p, text, "ALFontLabel")
+    local l = W.Label(p, text, "UAHFontLabel")
     l:SetPoint("TOPLEFT", 16, y)
     return l
   end
   local function kv(y, label)
-    local l = W.Label(p, label, "ALFontMuted")
+    local l = W.Label(p, label, "UAHFontMuted")
     l:SetPoint("TOPLEFT", 16, y)
-    local val = W.Label(p, "", "ALFontBody")
+    local val = W.Label(p, "", "UAHFontBody")
     val:SetPoint("TOPRIGHT", -16, y)
     val:SetJustifyH("RIGHT")
     return val
@@ -197,17 +197,17 @@ function UI:BuildSell(v)
 
   divider(-170)
   section(-180, "CHEAPEST AUCTIONS")
-  p.compAge = W.Label(p, "", "ALFontMuted")
+  p.compAge = W.Label(p, "", "UAHFontMuted")
   p.compAge:SetPoint("TOPRIGHT", -16, -180)
   p.compAge:SetJustifyH("RIGHT")
   p.comp = {}
   for i = 1, 4 do
     local y = -198 - (i - 1) * 17
-    local price = W.Label(p, "", "ALFontBody")
+    local price = W.Label(p, "", "UAHFontBody")
     price:SetPoint("TOPLEFT", 16, y)
     price:SetWidth(PW - 150)
     price:SetWordWrap(false)
-    local qty = W.Label(p, "", "ALFontMuted")
+    local qty = W.Label(p, "", "UAHFontMuted")
     qty:SetPoint("TOPRIGHT", -16, y)
     qty:SetJustifyH("RIGHT")
     p.comp[i] = { price = price, qty = qty }
@@ -253,7 +253,7 @@ function UI:BuildSell(v)
   p.total = kv(-370, "Buyout")
   p.deposit = kv(-388, "Deposit")
   p.receive = kv(-406, "You receive after the 5% cut")
-  p.status = W.Label(p, "", "ALFontMuted")
+  p.status = W.Label(p, "", "UAHFontMuted")
   p.status:SetPoint("TOPLEFT", 16, -427)
   p.status:SetWidth(PW - 32)
   p.status:SetWordWrap(false)
@@ -484,7 +484,7 @@ function UI:BuildSettings(v)
   self.checks = {}
   local y = 0
   for _, g in ipairs(groups) do
-    local h = W.Label(v, g[1], "ALFontLabel")
+    local h = W.Label(v, g[1], "UAHFontLabel")
     h:SetPoint("TOPLEFT", 0, y)
     y = y - 18
     for _, o in ipairs(g[2]) do
@@ -501,14 +501,14 @@ function UI:BuildSettings(v)
   local panel = W.Panel(v, W.C.panel)
   panel:SetPoint("TOPLEFT", x, 0)
   panel:SetSize(PAGE_W - x - 16, 252)
-  local h = W.Label(panel, "STORED DATA", "ALFontLabel")
+  local h = W.Label(panel, "STORED DATA", "UAHFontLabel")
   h:SetPoint("TOPLEFT", 16, -14)
   self.sstats = {}
   local labels = { "Ledger rows", "Characters", "Priced items", "Daily price points", "Value snapshots", "Watched items", "Last scan" }
   for i, l in ipairs(labels) do
-    local k = W.Label(panel, l, "ALFontMuted")
+    local k = W.Label(panel, l, "UAHFontMuted")
     k:SetPoint("TOPLEFT", 16, -16 - i * 26)
-    local val = W.Label(panel, "", "ALFontBody")
+    local val = W.Label(panel, "", "UAHFontBody")
     val:SetPoint("TOPRIGHT", -16, -16 - i * 26)
     val:SetJustifyH("RIGHT")
     self.sstats[i] = val
@@ -521,7 +521,7 @@ function UI:BuildSettings(v)
     end
   end
   local clear = W.Button(panel, "Clear price data", 150, function()
-    StaticPopup_Show("AUCTIONLEDGER_CONFIRM", "all scanned prices and price history", nil,
+    StaticPopup_Show("ULTIMATEAH_CONFIRM", "all scanned prices and price history", nil,
       function() AL.db.prices[AL:Scope()] = {}; AL.db.deals = {}; AL:Print("price data cleared"); UI:Refresh() end)
   end)
   clear:SetPoint("BOTTOMLEFT", 16, 14)
@@ -531,11 +531,11 @@ function UI:BuildSettings(v)
   end)
   reset:SetPoint("LEFT", clear, "RIGHT", 8, 0)
   local note = W.Label(v, "Data is shared by all characters on this WoW account. Characters on another account can be merged " ..
-    "with sync_accounts.py (see the README).", "ALFontMuted")
+    "with sync_accounts.py (see the README).", "UAHFontMuted")
   note:SetPoint("TOPLEFT", panel, "BOTTOMLEFT", 0, -12)
   note:SetWidth(PAGE_W - x - 16)
-  local cmds = W.Label(v, "Commands  /al  /al scan [quick|deep]  /al watch <item> <price>  /al sell  /al junk  /al deals  " ..
-    "/al value  /al price <item>  /al ah <item> [x20]  /al help", "ALFontMuted")
+  local cmds = W.Label(v, "Commands  /uah  /uah scan [quick|deep]  /uah watch <item> <price>  /uah sell  /uah junk  /uah deals  " ..
+    "/uah value  /uah price <item>  /uah ah <item> [x20]  /uah help", "UAHFontMuted")
   cmds:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -10)
   cmds:SetWidth(PAGE_W - x - 16)
 end
@@ -559,8 +559,8 @@ function UI:RefreshSettings()
   end
 end
 
-StaticPopupDialogs["AUCTIONLEDGER_CONFIRM"] = {
-  text = "AuctionLedger: delete %s?\n\nThis cannot be undone.",
+StaticPopupDialogs["ULTIMATEAH_CONFIRM"] = {
+  text = "Ultimate AH: delete %s?\n\nThis cannot be undone.",
   button1 = YES or "Yes", button2 = NO or "No",
   OnAccept = function(_, fn) if type(fn) == "function" then fn() end end,
   timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,

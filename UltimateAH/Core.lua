@@ -1,6 +1,6 @@
--- AuctionLedger: core (saved data, events, helpers, slash commands)
+-- Ultimate AH: core (saved data, events, helpers, slash commands)
 local ADDON, AL = ...
-_G.AuctionLedger = AL
+_G.UltimateAH = AL
 
 AL.version = "1.0.0"
 AL.DB_VERSION = 1
@@ -36,7 +36,7 @@ frame:SetScript("OnEvent", function(_, event, ...) AL:Fire(event, ...) end)
 ---------------------------------------------------------------------------
 -- output
 ---------------------------------------------------------------------------
-local PREFIX = "|cff33ccffAuctionLedger|r: "
+local PREFIX = "|cff33ccffUltimate AH|r: "
 
 function AL:Print(...)
   local parts = {}
@@ -215,10 +215,10 @@ local function fill(dst, src)
 end
 
 function AL:InitDB()
-  AuctionLedgerDB = AuctionLedgerDB or {}
-  fill(AuctionLedgerDB, DEFAULTS)
-  AuctionLedgerDB.dbVersion = AL.DB_VERSION
-  self.db = AuctionLedgerDB
+  UltimateAHDB = UltimateAHDB or {}
+  fill(UltimateAHDB, DEFAULTS)
+  UltimateAHDB.dbVersion = AL.DB_VERSION
+  self.db = UltimateAHDB
   self.db.dev = nil                -- development output is never kept
   -- early dev builds keyed characters as "First-" (realm is empty on Forever)
   for k in pairs(self.db.chars) do if k:sub(-1) == "-" then self.db.chars[k] = nil end end
@@ -308,10 +308,9 @@ function AL:Command(name, help, fn)
   self.commands[name] = { help = help, fn = fn }
 end
 
-SLASH_AUCTIONLEDGER1 = "/al"
-SLASH_AUCTIONLEDGER2 = "/ledger"
-SLASH_AUCTIONLEDGER3 = "/auctionledger"
-SlashCmdList.AUCTIONLEDGER = function(msg)
+SLASH_ULTIMATEAH1 = "/uah"
+SLASH_ULTIMATEAH2 = "/ultimateah"
+SlashCmdList.ULTIMATEAH = function(msg)
   msg = msg or ""
   local cmd, rest = msg:match("^%s*(%S*)%s*(.-)%s*$")
   cmd = (cmd or ""):lower()
@@ -327,7 +326,7 @@ SlashCmdList.AUCTIONLEDGER = function(msg)
     for k in pairs(AL.commands) do names[#names + 1] = k end
     table.sort(names)
     for _, k in ipairs(names) do
-      if AL.commands[k].help then AL:Print("  /al " .. k .. " - " .. AL.commands[k].help) end
+      if AL.commands[k].help then AL:Print("  /uah " .. k .. " - " .. AL.commands[k].help) end
     end
   end
 end

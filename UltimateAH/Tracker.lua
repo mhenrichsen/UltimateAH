@@ -1,4 +1,4 @@
--- AuctionLedger: records buys, posts, cancels, sales and expiries
+-- Ultimate AH: records buys, posts, cancels, sales and expiries
 --
 -- Buys are recorded at the auction house the moment the server confirms them.
 -- Sales are recorded from the "Auction successful" mail invoice (exact price and AH cut),

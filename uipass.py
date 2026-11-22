@@ -2,7 +2,7 @@
 import os
 import sys
 
-ADDON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AuctionLedger")
+ADDON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "UltimateAH")
 _cache = {}
 
 

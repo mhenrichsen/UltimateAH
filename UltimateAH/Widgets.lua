@@ -1,4 +1,4 @@
--- AuctionLedger: UI kit - a flat dark theme with its own fonts, buttons, inputs, dropdowns,
+-- Ultimate AH: UI kit - a flat dark theme with its own fonts, buttons, inputs, dropdowns,
 -- switches, cards, tables and graphs (no Blizzard templates, so it looks the same everywhere)
 local _, AL = ...
 local W = {}
@@ -41,21 +41,21 @@ local function makeFont(name, size, color, flags)
   return f
 end
 W.F = {
-  h1     = makeFont("ALFontH1", 22, C.text),
-  h2     = makeFont("ALFontH2", 15, C.text),
-  big    = makeFont("ALFontBig", 19, C.text),
-  body   = makeFont("ALFontBody", 13, C.text),
-  bright = makeFont("ALFontBright", 13, { 1, 1, 1 }),
-  small  = makeFont("ALFontSmall", 12, C.text),
-  muted  = makeFont("ALFontMuted", 12, C.muted),
-  label  = makeFont("ALFontLabel", 10, C.muted),
-  accent = makeFont("ALFontAccent", 13, C.accent),
+  h1     = makeFont("UAHFontH1", 22, C.text),
+  h2     = makeFont("UAHFontH2", 15, C.text),
+  big    = makeFont("UAHFontBig", 19, C.text),
+  body   = makeFont("UAHFontBody", 13, C.text),
+  bright = makeFont("UAHFontBright", 13, { 1, 1, 1 }),
+  small  = makeFont("UAHFontSmall", 12, C.text),
+  muted  = makeFont("UAHFontMuted", 12, C.muted),
+  label  = makeFont("UAHFontLabel", 10, C.muted),
+  accent = makeFont("UAHFontAccent", 13, C.accent),
 }
 -- old Blizzard font names used around the addon -> theme fonts
 local FONTMAP = {
-  GameFontNormalLarge = "ALFontH2", GameFontNormal = "ALFontH2", GameFontHighlight = "ALFontBody",
-  GameFontHighlightSmall = "ALFontSmall", GameFontDisableSmall = "ALFontMuted", GameFontDisable = "ALFontMuted",
-  GameFontNormalSmall = "ALFontLabel",
+  GameFontNormalLarge = "UAHFontH2", GameFontNormal = "UAHFontH2", GameFontHighlight = "UAHFontBody",
+  GameFontHighlightSmall = "UAHFontSmall", GameFontDisableSmall = "UAHFontMuted", GameFontDisable = "UAHFontMuted",
+  GameFontNormalSmall = "UAHFontLabel",
 }
 
 ---------------------------------------------------------------------------
@@ -117,7 +117,7 @@ end
 
 function W.Label(parent, text, font)
   local fs = parent:CreateFontString(nil, "OVERLAY")
-  fs:SetFontObject(FONTMAP[font] or font or "ALFontSmall")
+  fs:SetFontObject(FONTMAP[font] or font or "UAHFontSmall")
   fs:SetText(text or "")
   fs:SetJustifyH("LEFT")
   return fs
@@ -150,8 +150,8 @@ function W.Button(parent, text, width, onClick, style)
   fs:SetPoint("RIGHT", -8, 0)
   fs:SetWordWrap(false)
   b:SetFontString(fs)
-  b:SetNormalFontObject(primary and "ALFontBright" or "ALFontBody")
-  b:SetDisabledFontObject("ALFontMuted")
+  b:SetNormalFontObject(primary and "UAHFontBright" or "UAHFontBody")
+  b:SetDisabledFontObject("UAHFontMuted")
   b:SetText(text)
   b:SetScript("OnClick", onClick)
   b:SetScript("OnMouseDown", function(s) if s:IsEnabled() then s.bg:SetAlpha(0.75) end end)
@@ -186,11 +186,11 @@ function W.Edit(parent, width, placeholder, onChange)
   local e = CreateFrame("EditBox", nil, parent)
   e:SetSize(width, 26)
   e:SetAutoFocus(false)
-  e:SetFontObject("ALFontBody")
+  e:SetFontObject("UAHFontBody")
   e:SetTextInsets(10, 10, 0, 0)
   W.Fill(e, C.panel)
   W.Border(e)
-  local ph = e:CreateFontString(nil, "OVERLAY", "ALFontMuted")
+  local ph = e:CreateFontString(nil, "OVERLAY", "UAHFontMuted")
   ph:SetPoint("LEFT", 10, 0)
   ph:SetPoint("RIGHT", -10, 0)
   ph:SetJustifyH("LEFT")
@@ -250,7 +250,7 @@ local function openMenu(owner)
       it.bar:SetPoint("TOPLEFT"); it.bar:SetPoint("BOTTOMLEFT")
       it.bar:SetWidth(2)
       it.bar:SetColorTexture(C.accent[1], C.accent[2], C.accent[3], 1)
-      it.fs = it:CreateFontString(nil, "OVERLAY", "ALFontBody")
+      it.fs = it:CreateFontString(nil, "OVERLAY", "UAHFontBody")
       it.fs:SetPoint("LEFT", 12, 0); it.fs:SetPoint("RIGHT", -10, 0)
       it.fs:SetJustifyH("LEFT")
       menu.items[i] = it
@@ -286,7 +286,7 @@ function W.Cycle(parent, prefix, width, opts, onChange)
   local hl = b:CreateTexture(nil, "HIGHLIGHT")
   hl:SetAllPoints()
   hl:SetColorTexture(1, 1, 1, 0.04)
-  local fs = b:CreateFontString(nil, "OVERLAY", "ALFontBody")
+  local fs = b:CreateFontString(nil, "OVERLAY", "UAHFontBody")
   fs:SetPoint("LEFT", 10, 0)
   fs:SetPoint("RIGHT", -24, 0)
   fs:SetJustifyH("LEFT")
@@ -341,11 +341,11 @@ function W.Toggle(parent, label, desc, get, set, width)
   local mid = track:CreateTexture(nil, "BACKGROUND")
   mid:SetPoint("TOPLEFT", 9, 0); mid:SetPoint("BOTTOMRIGHT", -9, 0)
   local knob = W.Circle(track, 14, { 1, 1, 1 }, "ARTWORK")
-  local fs = c:CreateFontString(nil, "OVERLAY", "ALFontBody")
+  local fs = c:CreateFontString(nil, "OVERLAY", "UAHFontBody")
   fs:SetPoint("TOPLEFT", 46, -3)
   fs:SetText(label)
   if desc then
-    local d = c:CreateFontString(nil, "OVERLAY", "ALFontMuted")
+    local d = c:CreateFontString(nil, "OVERLAY", "UAHFontMuted")
     d:SetPoint("TOPLEFT", 46, -20)
     d:SetPoint("RIGHT", 0, 0)
     d:SetJustifyH("LEFT")
@@ -380,15 +380,15 @@ function W.Stat(parent, width, label)
   f.bar:SetPoint("TOPRIGHT", -1, -1)
   f.bar:SetHeight(2)
   f.bar:SetColorTexture(C.accent[1], C.accent[2], C.accent[3], 0.0)
-  f.label = f:CreateFontString(nil, "OVERLAY", "ALFontLabel")
+  f.label = f:CreateFontString(nil, "OVERLAY", "UAHFontLabel")
   f.label:SetPoint("TOPLEFT", 12, -10)
   f.label:SetText(label:upper())
-  f.value = f:CreateFontString(nil, "OVERLAY", "ALFontBig")
+  f.value = f:CreateFontString(nil, "OVERLAY", "UAHFontBig")
   f.value:SetPoint("BOTTOMLEFT", 12, 10)
   f.value:SetPoint("BOTTOMRIGHT", -10, 10)
   f.value:SetJustifyH("LEFT")
   f.value:SetWordWrap(false)
-  f.note = f:CreateFontString(nil, "OVERLAY", "ALFontMuted")
+  f.note = f:CreateFontString(nil, "OVERLAY", "UAHFontMuted")
   f.note:SetPoint("TOPRIGHT", -10, -9)
   f.note:SetPoint("LEFT", f.label, "RIGHT", 8, 0)
   f.note:SetJustifyH("RIGHT")
@@ -453,13 +453,13 @@ function W.Graph(parent, width, height, fmtY)
     gl:SetColorTexture(1, 1, 1, 0.05)
     gl:SetThickness(1)
     g.grid[i] = gl
-    local yl = g:CreateFontString(nil, "OVERLAY", "ALFontLabel")
+    local yl = g:CreateFontString(nil, "OVERLAY", "UAHFontLabel")
     yl:SetJustifyH("RIGHT")
     yl:SetWidth(L - 12)
     g.ylabels[i] = yl
-    g.xlabels[i] = g:CreateFontString(nil, "OVERLAY", "ALFontLabel")
+    g.xlabels[i] = g:CreateFontString(nil, "OVERLAY", "UAHFontLabel")
   end
-  g.empty = g:CreateFontString(nil, "OVERLAY", "ALFontMuted")
+  g.empty = g:CreateFontString(nil, "OVERLAY", "UAHFontMuted")
   g.empty:SetPoint("CENTER", plot)
   g.dot = W.Circle(plot, 9, C.accent, "OVERLAY")
   g.dot:Hide()
@@ -603,7 +603,7 @@ function W.Table(parent, columns, numRows)
     local h = CreateFrame("Button", nil, t)
     h:SetSize(c.width, ROW_H)
     h:SetPoint("TOPLEFT", x, 0)
-    local fs = h:CreateFontString(nil, "OVERLAY", "ALFontLabel")
+    local fs = h:CreateFontString(nil, "OVERLAY", "UAHFontLabel")
     local gap = (c.justify ~= "RIGHT" and i > 1 and columns[i - 1].justify == "RIGHT") and 16 or (c.justify == "RIGHT" and 0 or 6)
     fs:SetPoint("TOPLEFT", gap, 0)
     fs:SetPoint("BOTTOMRIGHT", c.justify == "RIGHT" and -6 or 0, 0)
@@ -666,7 +666,7 @@ function W.Table(parent, columns, numRows)
     row.cells = {}
     local cx = 0
     for i, c in ipairs(columns) do
-      local fs = row:CreateFontString(nil, "OVERLAY", "ALFontBody")
+      local fs = row:CreateFontString(nil, "OVERLAY", "UAHFontBody")
       fs:SetJustifyH(c.justify or "LEFT")
       fs:SetWordWrap(false)
       if c.icon then
@@ -749,7 +749,7 @@ function W.Table(parent, columns, numRows)
     t:Refresh()
   end)
 
-  t.empty = t:CreateFontString(nil, "OVERLAY", "ALFontMuted")
+  t.empty = t:CreateFontString(nil, "OVERLAY", "UAHFontMuted")
   t.empty:SetPoint("TOP", 0, -ROW_H * 3)
   t.empty:SetWidth(width - 40)
 

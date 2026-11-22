@@ -1,4 +1,4 @@
-# AuctionLedger
+# Ultimate AH
 
 An auction house toolkit for **World of Warcraft: Forever** (interface 16001): a ledger of every
 buy and sale across your characters, price scans, a value graph, a deal finder, a watchlist,
@@ -24,9 +24,9 @@ layout code with sample data. Fonts and icons differ a little from the game.
 
 | Path | What it is |
 |---|---|
-| `AuctionLedger/` | The addon. Copy this folder into `_forever_\Interface\AddOns`. Its [README](AuctionLedger/README.md) describes every page and command. |
+| `UltimateAH/` | The addon. Copy this folder into `_forever_\Interface\AddOns`. Its [README](UltimateAH/README.md) describes every page and command. |
 | `ah_api.py` | Auto scans: downloads your auction house from Blizzard's Game Data API every hour and writes `ApiData.lua` for the addon. |
-| `deploy.py` | Copies `AuctionLedger/` into the game folder. |
+| `deploy.py` | Copies `UltimateAH/` into the game folder. |
 | `sync_accounts.py` | Merges the addon's saved data across WoW accounts on one PC. |
 | `test_*.py`, `tests_v2.py` | Tests: the addon's Lua runs in [lupa](https://pypi.org/project/lupa/) against a mocked WoW API. |
 | `render_ui.py` | Draws every page to a PNG without the game. |
@@ -34,9 +34,9 @@ layout code with sample data. Fonts and icons differ a little from the game.
 
 ## Install the addon
 
-1. Copy the `AuctionLedger` folder into `World of Warcraft\_forever_\Interface\AddOns`
+1. Copy the `UltimateAH` folder into `World of Warcraft\_forever_\Interface\AddOns`
    (or run `python deploy.py`).
-2. Start the game, then `/al` or the minimap button.
+2. Start the game, then `/uah` or the minimap button.
 
 ## Auto scans through Blizzard's API (optional)
 
@@ -48,7 +48,7 @@ An addon cannot reach the internet, so a small Python script does it from outsid
 3. `python ah_api.py check` tests the keys. `python ah_api.py detect` finds which auction house is
    yours by comparing prices with your last in-game Full Scan (do one first, then `/reload`).
 4. `python ah_api.py auto` runs a scan. Schedule it hourly, for example with Windows Task Scheduler.
-5. The addon loads the data at login or `/reload`. `/al api` shows what it loaded.
+5. The addon loads the data at login or `/reload`. `/uah api` shows what it loaded.
 
 Needs Python 3.10+ and `pip install lupa` (used to read the addon's saved data).
 
@@ -75,7 +75,7 @@ python test_sell.py
 python render_ui.py renders
 ```
 
-Edit the addon in `AuctionLedger/`, run the tests, then `python deploy.py` to try it in the game.
+Edit the addon in `UltimateAH/`, run the tests, then `python deploy.py` to try it in the game.
 
 Two things worth knowing:
 

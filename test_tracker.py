@@ -4,7 +4,7 @@ import sys
 
 import lupa
 
-ADDON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AuctionLedger")
+ADDON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "UltimateAH")
 
 MOCK = r"""
 NOW = 1795300000
@@ -105,9 +105,9 @@ AL = lua.table()
 for f in ("Core.lua", "Tracker.lua", "Scanner.lua", "Deals.lua", "Guild.lua", "Watch.lua", "Sell.lua", "Mail.lua"):
     chunk = lua.eval("function(src, name) return assert((loadstring or load)(src, name)) end")(
         open(os.path.join(ADDON, f), encoding="utf-8").read(), "@" + f)
-    chunk("AuctionLedger", AL)
+    chunk("UltimateAH", AL)
 G = lua.globals()
-G.FIRE("ADDON_LOADED", "AuctionLedger")
+G.FIRE("ADDON_LOADED", "UltimateAH")
 G.FIRE("PLAYER_LOGIN")
 G.RUNTIMERS()
 
@@ -218,12 +218,12 @@ ts = [r["t"] for r in txs()]
 check("ledger sorted by time", ts == sorted(ts))
 
 # 11. price maths
-st = lua.eval("function(l) return AuctionLedger.Scanner.Stats(l) end")
+st = lua.eval("function(l) return UltimateAH.Scanner.Stats(l) end")
 mn, mkt, qty, num, top = st(lua.eval("{ {100,5}, {110,5}, {120,10}, {500,1}, {130,20}, {140,30} }"))
 check("market value ignores the outlier", mn == 100 and 100 <= mkt <= 125 and qty == 71 and num == 6, (mn, mkt, qty, num, top))
 
 # 12. deal finder: 3 cheap stacks under a normal price of ~10g
-ev = lua.eval("function(id, l, e) return AuctionLedger.Deals.Evaluate(id, l, e, AuctionLedger.Deals:Settings()) end")
+ev = lua.eval("function(id, l, e) return UltimateAH.Deals.Evaluate(id, l, e, UltimateAH.Deals:Settings()) end")
 entries = lua.eval("{ {20000,2}, {25000,1}, {30000,3}, {95000,5}, {98000,10}, {100000,10}, {101000,20} }")
 e = lua.eval("{ mkt = 100000, top = 99000, h = {} }")
 d = ev(9999, entries, e)
@@ -257,8 +257,8 @@ check("complete empty owned list clears it", len(AL.db.listings["Tess Bank"].lis
 
 # 13. deal finder judges suffix gear per variant, not against the all-variants list
 lua.execute("""
-local S, scope = AuctionLedger.Scanner, AuctionLedger:Scope()
-AuctionLedger.db.prices[scope] = {
+local S, scope = UltimateAH.Scanner, UltimateAH:Scope()
+UltimateAH.db.prices[scope] = {
   ["500"] = { i = 500, n = "Leggings", mkt = 100000, top = 100000, h = {} },
   ["500:b1"] = { i = 500, n = "Leggings of the Eagle", mkt = 20000, top = 20000, h = {} },
   ["600"] = { i = 600, n = "Cloth", mkt = 100000, top = 99000, h = {} },
@@ -268,16 +268,16 @@ S.last = { t = NOW, items = {
   ["500:b1"] = { {20000,1}, {21000,1}, {22000,1}, {23000,1} },
   ["600"] = { {20000,2}, {25000,1}, {30000,3}, {95000,5}, {98000,10}, {100000,10}, {101000,20} },
 } }
-DEALS = AuctionLedger.Deals:Find()
+DEALS = UltimateAH.Deals:Find()
 """)
 keys = sorted(d.key for d in G.DEALS.values())
 check("suffix gear judged per variant (no false flip)", keys == ["600"], keys)
 
 # 16. guild chat "AH <item>" replies
 lua.execute("""
-AuctionLedger.UI = { Ago = function(t) return math.floor((NOW - t) / 60) .. 'm ago' end }
-local scope = AuctionLedger:Scope()
-AuctionLedger.db.prices[scope] = {
+UltimateAH.UI = { Ago = function(t) return math.floor((NOW - t) / 60) .. 'm ago' end }
+local scope = UltimateAH:Scope()
+UltimateAH.db.prices[scope] = {
   ["4306"] = { i = 4306, n = "Silk Cloth", mkt = 199, min = 192, top = 201, qty = 22280, t = NOW - 720, h = {} },
   ["500"] = { i = 500, n = "Leggings", mkt = 50000, min = 40000, qty = 9, t = NOW - 60, h = {} },
   ["500:b1"] = { i = 500, n = "Leggings", mkt = 20000, min = 19000, qty = 3, t = NOW - 60, h = {} },
@@ -299,7 +299,7 @@ def sent():
 guild("AH Silk Cloth")
 G.RUNTIMERS()
 s = sent()
-check("guild: reply with market data", len(s) == 1 and s[0].startswith("GUILD:[AL] [Silk Cloth]: market 1s 99c, lowest 1s 92c")
+check("guild: reply with market data", len(s) == 1 and s[0].startswith("GUILD:[UAH] [Silk Cloth]: market 1s 99c, lowest 1s 92c")
       and "22280 listed" in s[0] and "scanned 12m ago" in s[0], s)
 guild("AH Silk Cloth")
 G.RUNTIMERS()
@@ -307,7 +307,7 @@ check("guild: same asker, same item again is throttled", len(sent()) == 1, sent(
 guild("ah ok"); guild("AH is busy right now"); G.RUNTIMERS()
 check("guild: 'ah ok' and plain words are ignored", len(sent()) == 1, sent())
 guild("AH Leggings", "Other")
-G.FIRE("CHAT_MSG_GUILD", "[AL] [Leggings]: market 5g, lowest 4g (scanned 1m ago)", "AnotherAddonUser")
+G.FIRE("CHAT_MSG_GUILD", "[UAH] [Leggings]: market 5g, lowest 4g (scanned 1m ago)", "AnotherAddonUser")
 G.RUNTIMERS()
 check("guild: stays quiet when another addon user answered first", len(sent()) == 1, sent())
 guild("AH leggings", "Third")
@@ -320,10 +320,10 @@ check("guild: partial name answers the shortest match and says there are more", 
 guild("AH |cffffffff|Hitem:4306::::::::1::::::|h[Silk Cloth]|h|r", "Fifth")
 G.RUNTIMERS()
 check("guild: item link query", len(sent()) == 4 and "[Silk Cloth]" in sent()[3], sent()[-1:])
-guild("[AL] [Silk Cloth]: market 1s", "Me")
+guild("[UAH] [Silk Cloth]: market 1s", "Me")
 G.RUNTIMERS()
-check("guild: never answers [AL] lines", len(sent()) == 4)
-lua.execute("AuctionLedger.db.settings.guildReply = false")
+check("guild: never answers [UAH] lines", len(sent()) == 4)
+lua.execute("UltimateAH.db.settings.guildReply = false")
 guild("AH Silk Bandage", "Sixth")
 G.RUNTIMERS()
 check("guild: off switch", len(sent()) == 4)

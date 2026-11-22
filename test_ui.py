@@ -6,7 +6,7 @@ import sys
 
 import lupa
 
-ADDON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AuctionLedger")
+ADDON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "UltimateAH")
 
 MOCK = r"""
 NOW = 1795300000
@@ -116,13 +116,13 @@ Enum.TooltipDataType = { Item = 0 }
 lua = lupa.LuaRuntime(unpack_returned_tuples=True)
 lua.execute(MOCK)
 AL = lua.table()
-toc = open(os.path.join(ADDON, "AuctionLedger.toc"), encoding="utf-8").read().splitlines()
+toc = open(os.path.join(ADDON, "UltimateAH.toc"), encoding="utf-8").read().splitlines()
 files = [l.strip() for l in toc if l.strip().endswith(".lua")]
 loader = lua.eval("function(src, name) return assert(load(src, name)) end")
 for f in files:
-    loader(open(os.path.join(ADDON, f), encoding="utf-8").read(), "@" + f)("AuctionLedger", AL)
+    loader(open(os.path.join(ADDON, f), encoding="utf-8").read(), "@" + f)("UltimateAH", AL)
 G = lua.globals()
-G.FIRE("ADDON_LOADED", "AuctionLedger")
+G.FIRE("ADDON_LOADED", "UltimateAH")
 G.FIRE("PLAYER_LOGIN")
 G.RUNTIMERS()
 
@@ -138,7 +138,7 @@ def check(name, cond, info=""):
 
 # some data so every page has rows
 lua.execute("""
-local A = AuctionLedger
+local A = UltimateAH
 local scope = A:Scope()
 A.db.prices[scope] = A.db.prices[scope] or {}
 A.db.prices[scope]["4306"] = { i = 4306, n = "Silk Cloth", mkt = 199, min = 150, minOther = 160, top = 201, qty = 100, num = 9, t = NOW, h = { [20777] = { 200, 150 }, [20778] = { 199, 151 } } }
@@ -151,30 +151,30 @@ A.Watch:For("4306").hit = { t = NOW - 60, qty = 4, price = 160, source = "test" 
 A.db.deals = { [scope] = { t = NOW, list = { { kind = "flip", key = "4306", item = 4306, name = "Silk Cloth", n = 2, qty = 30, cost = 3000, sellAt = 199, profit = 40000, ref = 201, low = 90, roi = 1.2, sure = true, auctions = 12, listed = 200, above = 8, days = 3 } } } }
 """)
 
-for tab in list(G.AuctionLedger.UI.TAB_NAMES.values()):
+for tab in list(G.UltimateAH.UI.TAB_NAMES.values()):
     try:
-        lua.execute("AuctionLedger.UI:Toggle(%r)" % tab)
-        lua.execute("AuctionLedger.UI:Refresh()")
-        errs = lua.eval("#AuctionLedger.errors")
+        lua.execute("UltimateAH.UI:Toggle(%r)" % tab)
+        lua.execute("UltimateAH.UI:Refresh()")
+        errs = lua.eval("#UltimateAH.errors")
         check("page %s builds and refreshes" % tab, True)
     except Exception as e:  # noqa: BLE001
         check("page %s builds and refreshes" % tab, False, e)
 
-lua.execute("ERRS = {} for _, e in ipairs(AuctionLedger.errors or {}) do ERRS[#ERRS + 1] = tostring(e) end")
+lua.execute("ERRS = {} for _, e in ipairs(UltimateAH.errors or {}) do ERRS[#ERRS + 1] = tostring(e) end")
 errs = [G.ERRS[i] for i in range(1, len(G.ERRS) + 1)]
 check("no errors caught by the addon's own error handler", not errs, errs[:5])
 
 for name, code in [
-    ("price graph popup", "AuctionLedger.UI:ShowPriceGraph('4306')"),
-    ("AH side panel", "AuctionHouseFrame = CreateFrame(); AuctionLedger.ahOpen = true; AuctionLedger.UI:AttachToAH(); AuctionLedger.UI:UpdateScanStatus()"),
-    ("minimap button", "AuctionLedger.UI.mmb = nil; AuctionLedger.UI:MinimapButton()"),
-    ("sidebar badges", "AuctionLedger.UI:UpdateChrome()"),
-    ("dropdown menu opens", "local d = AuctionLedger.UI.vperiod; d.scripts.OnClick(d, 'LeftButton')"),
-    ("dropdown right-click steps back", "local d = AuctionLedger.UI.vperiod; d.scripts.OnClick(d, 'RightButton')"),
-    ("toggle switch flips a setting", "local c = AuctionLedger.UI.checks[1]; local before = AuctionLedger.db.settings.tooltip; c.scripts.OnClick(c); assert(AuctionLedger.db.settings.tooltip ~= before)"),
-    ("table sort by header", "local t = AuctionLedger.UI.ltable; t.headers[7].scripts.OnClick(); t.headers[7].scripts.OnClick()"),
+    ("price graph popup", "UltimateAH.UI:ShowPriceGraph('4306')"),
+    ("AH side panel", "AuctionHouseFrame = CreateFrame(); UltimateAH.ahOpen = true; UltimateAH.UI:AttachToAH(); UltimateAH.UI:UpdateScanStatus()"),
+    ("minimap button", "UltimateAH.UI.mmb = nil; UltimateAH.UI:MinimapButton()"),
+    ("sidebar badges", "UltimateAH.UI:UpdateChrome()"),
+    ("dropdown menu opens", "local d = UltimateAH.UI.vperiod; d.scripts.OnClick(d, 'LeftButton')"),
+    ("dropdown right-click steps back", "local d = UltimateAH.UI.vperiod; d.scripts.OnClick(d, 'RightButton')"),
+    ("toggle switch flips a setting", "local c = UltimateAH.UI.checks[1]; local before = UltimateAH.db.settings.tooltip; c.scripts.OnClick(c); assert(UltimateAH.db.settings.tooltip ~= before)"),
+    ("table sort by header", "local t = UltimateAH.UI.ltable; t.headers[7].scripts.OnClick(); t.headers[7].scripts.OnClick()"),
     ("item tooltip lines", "local tt = CreateFrame(); GameTooltip = tt; tt.GetItem = function() return 'Silk Cloth', '|cffffffff|Hitem:4306::::::::1::::::|h[Silk Cloth]|h|r' end; TOOLTIPFN(tt, { id = 4306 })"),
-    ("prices right-click -> watch", "AuctionLedger.UI:Toggle('Prices'); AuctionLedger.UI.ptable.onClick({ itemID = 4306, key = '4306' }, 'RightButton'); assert(AuctionLedger.UI.current == 'Watch')"),
+    ("prices right-click -> watch", "UltimateAH.UI:Toggle('Prices'); UltimateAH.UI.ptable.onClick({ itemID = 4306, key = '4306' }, 'RightButton'); assert(UltimateAH.UI.current == 'Watch')"),
 ]:
     try:
         lua.execute(code)
@@ -182,7 +182,7 @@ for name, code in [
     except Exception as e:  # noqa: BLE001
         check(name, False, e)
 
-lua.execute("ERRS = {} for _, e in ipairs(AuctionLedger.errors or {}) do ERRS[#ERRS + 1] = tostring(e) end")
+lua.execute("ERRS = {} for _, e in ipairs(UltimateAH.errors or {}) do ERRS[#ERRS + 1] = tostring(e) end")
 errs = [G.ERRS[i] for i in range(1, len(G.ERRS) + 1)]
 check("still no handler errors", not errs, errs[:5])
 print("\n%d failure(s)" % fails)

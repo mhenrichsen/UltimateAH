@@ -1,4 +1,4 @@
--- AuctionLedger: auction house price scanning
+-- Ultimate AH: auction house price scanning
 --
 -- Full scan   C_AuctionHouse.ReplicateItems(): every auction on the AH at once (server allows one per 15 min).
 -- Quick scan  a blank browse query paged to the end: the lowest buyout and quantity of every item.
@@ -637,7 +637,7 @@ end)
 
 AL:On("AL_DB_READY", function() S:PruneHistory() end)
 
-AL:Command("scan", "full auction house scan ('/al scan quick', '/al scan deep')", function(arg)
+AL:Command("scan", "full auction house scan ('/uah scan quick', '/uah scan deep')", function(arg)
   if arg == "quick" then S:Quick() elseif arg == "deep" then S:Deep() else S:Full() end
 end)
 AL:Command("autoscan", "toggle a full scan each time you open the AH (when allowed)", function()

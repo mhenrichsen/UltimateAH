@@ -1,4 +1,4 @@
--- AuctionLedger: auto scans from Blizzard's web API
+-- Ultimate AH: auto scans from Blizzard's web API
 --
 -- An addon cannot reach the internet. ah_api.py (run every hour by a scheduled task, outside the
 -- game) downloads the auction house from Blizzard's API and writes ApiData.lua into this folder;
@@ -74,7 +74,7 @@ end
 
 -- merge ApiData.lua into the prices; spread over frames (10k+ items)
 function A:Import(d, done)
-  d = d or AuctionLedger_ApiData
+  d = d or UltimateAH_ApiData
   if type(d) ~= "table" or type(d.items) ~= "table" or not d.t then return false, "no API data" end
   local me = AL:Me()
   if d.faction and d.faction ~= me.faction then return false, "the API data is for " .. tostring(d.faction) end
@@ -96,7 +96,7 @@ function A:Import(d, done)
     if d.t > (sc.t or 0) then
       sc.t, sc.kind, sc.items, sc.auctions = d.t, "API", fresh, d.auctions
     end
-    if d == AuctionLedger_ApiData then AuctionLedger_ApiData = nil end      -- free the memory
+    if d == UltimateAH_ApiData then UltimateAH_ApiData = nil end      -- free the memory
     -- watchlist: only news counts
     if time() - d.t < 2 * 3600 and AL.Watch then
       for key, w in pairs(AL.Watch:List()) do

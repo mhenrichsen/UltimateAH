@@ -1,7 +1,7 @@
--- AuctionLedger: answer "AH <item>" in guild chat with our price data
+-- Ultimate AH: answer "AH <item>" in guild chat with our price data
 --
 --   guildie: AH Silk Cloth           (also a shift-clicked item link or an item ID)
---   you:     [AL] [Silk Cloth]: market 1s 99c, lowest 1s 92c, top-100 avg 2s 1c, 14d avg 2s 1c, 22280 listed (scanned 12m ago)
+--   you:     [UAH] [Silk Cloth]: market 1s 99c, lowest 1s 92c, top-100 avg 2s 1c, 14d avg 2s 1c, 22280 listed (scanned 12m ago)
 --
 -- Only messages starting with an uppercase "AH " are answered ("ah ok" is not a question). When
 -- several guildies run the addon, each waits a random moment and stays quiet if someone else
@@ -10,14 +10,14 @@ local _, AL = ...
 local G = {}
 AL.Guild = G
 
-local REPLY_PREFIX = "[AL]"
+local REPLY_PREFIX = "[UAH]"
 local GLOBAL_GAP = 2          -- seconds between any two replies
 local SAME_ASK_GAP = 20       -- the same asker asking the same thing again
 local MAX_LEN = 255
 
 local lastReply = 0
 local recentAsks = {}         -- "asker|query" -> time
-local answeredBySomeone = {}  -- lowercased item name -> time an [AL] reply was seen
+local answeredBySomeone = {}  -- lowercased item name -> time an [UAH] reply was seen
 
 local function isSecret(v) return issecretvalue and issecretvalue(v) or false end
 local function now() return GetTime() end
@@ -243,7 +243,7 @@ AL:Command("whispers", "turn the whisper price replies on or off ('AH <item>' wh
   AL:Print("whisper replies", AL.db.settings.whisperReply and "|cff59ff59on|r" or "|cffff7373off|r")
 end)
 
-AL:Command("ah", "preview the guild reply for an item, only you see it: /al ah <item> [x20]", function(arg)
+AL:Command("ah", "preview the guild reply for an item, only you see it: /uah ah <item> [x20]", function(arg)
   local msg = arg:lower():match("^%s*help%s*$") and G.HELP or G:Reply(arg)
   AL:Print(msg and ("guild reply would be: " .. msg) or ("no price data for '" .. tostring(arg) .. "'"))
 end)

@@ -1,4 +1,4 @@
--- AuctionLedger: developer console (/al x <lua>) used while building and testing
+-- Ultimate AH: developer console (/uah x <lua>) used while building and testing
 local _, AL = ...
 
 local panel, text
@@ -7,7 +7,7 @@ local MAXLINES = 40
 
 local function ensurePanel()
   if panel then return end
-  panel = CreateFrame("Frame", "AuctionLedgerDevPanel", UIParent, "BackdropTemplate")
+  panel = CreateFrame("Frame", "UltimateAHDevPanel", UIParent, "BackdropTemplate")
   panel:SetSize(760, 560)
   panel:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 560, -60)
   panel:SetFrameStrata("TOOLTIP")

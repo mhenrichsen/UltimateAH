@@ -1,6 +1,6 @@
-"""Merge AuctionLedger data across every WoW account folder, so each account sees all characters.
+"""Merge UltimateAH data across every WoW account folder, so each account sees all characters.
 
-WoW keeps addon data per account (WTF/Account/<id>/SavedVariables/AuctionLedger.lua). Run this while
+WoW keeps addon data per account (WTF/Account/<id>/SavedVariables/UltimateAH.lua). Run this while
 the game is closed or at the character-select screen; the game overwrites the file when you log out.
 
     python sync_accounts.py            # merge and write back (keeps a .sync-backup copy)
@@ -14,13 +14,13 @@ import sys
 import lupa
 
 WTF = r"C:\Program Files (x86)\World of Warcraft\_forever_\WTF\Account"
-NAME = "AuctionLedger.lua"
+NAME = "UltimateAH.lua"
 
 
 def load(path):
     lua = lupa.LuaRuntime(unpack_returned_tuples=True)
     lua.execute(open(path, encoding="utf-8").read())
-    return to_py(lua.globals().AuctionLedgerDB)
+    return to_py(lua.globals().UltimateAHDB)
 
 
 def to_py(v):
@@ -135,7 +135,7 @@ def main():
         out.update(merged)               # keep each account's own settings / dev data
         shutil.copy2(f, f + ".sync-backup")
         with open(f, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write("\nAuctionLedgerDB = " + ser(out) + "\n")
+            fh.write("\nUltimateAHDB = " + ser(out) + "\n")
         print("wrote", f)
 
 

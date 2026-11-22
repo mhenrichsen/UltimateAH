@@ -14,7 +14,7 @@ import lupa
 import ah_api
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ADDON = os.path.join(HERE, "AuctionLedger")
+ADDON = os.path.join(HERE, "UltimateAH")
 fails = 0
 
 
@@ -121,15 +121,15 @@ AL = lua.table()
 for f in ("Core.lua", "Tracker.lua", "Scanner.lua", "Deals.lua", "Guild.lua", "Watch.lua", "Sell.lua", "Mail.lua", "Api.lua"):
     chunk = lua.eval("function(src, name) return assert((loadstring or load)(src, name)) end")(
         open(os.path.join(ADDON, f), encoding="utf-8").read(), "@" + f)
-    chunk("AuctionLedger", AL)
+    chunk("UltimateAH", AL)
 G = lua.globals()
-G.FIRE("ADDON_LOADED", "AuctionLedger")
+G.FIRE("ADDON_LOADED", "UltimateAH")
 G.FIRE("PLAYER_LOGIN")
 G.RUNTIMERS()
 lua_stats = lua.eval("""function(flat)
   local e = {}
   for i = 1, #flat, 2 do e[#e + 1] = { flat[i], flat[i + 1] } end
-  return AuctionLedger.Scanner.Stats(e)
+  return UltimateAH.Scanner.Stats(e)
 end""")
 random.seed(7)
 same = True
@@ -147,7 +147,7 @@ for _ in range(200):
 check("stats: same min / market / top-100 as the in-game scan", same, "" if same else info)
 
 # 3. keys match the addon's link keys
-key = lua.eval('AuctionLedger.KeyFromLink("|cff1eff00|Hitem:11991::::::::1:1491::1:2:12745:777:|h[Ring of the Owl]|h|r", 11991)')
+key = lua.eval('UltimateAH.KeyFromLink("|cff1eff00|Hitem:11991::::::::1:1491::1:2:12745:777:|h[Ring of the Owl]|h|r", 11991)')
 check("keys: bonus ids give the addon's variant key", ah_api.item_key({"id": 11991, "bonus_lists": [12745, 777]}) == key, key)
 check("keys: plain item", ah_api.item_key({"id": 4306}) == "4306")
 
@@ -166,9 +166,9 @@ fake.regular = [
 fake.commodities = [com(100, 4306, 150, 200), com(101, 4306, 160, 500), com(102, 4306, 155, 40), com(103, 4306, 400, 10)]
 T0 = 1795300000 - 3600
 ah_api.cmd_scan(api, cfg, out=OUT, now=T0)
-G.AuctionLedger_ApiData = None
+G.UltimateAH_ApiData = None
 lua.execute(open(OUT, encoding="utf-8").read())
-d = G.AuctionLedger_ApiData
+d = G.UltimateAH_ApiData
 check("scan: file loads in Lua", d is not None and d.t == T0 and d.house == 113 and d.faction == "Alliance" and d.auctions == 12,
       (d.t, d.house, d.auctions) if d else None)
 it = items_of(d)
@@ -201,9 +201,9 @@ fake.commodities = [
 ]
 T1 = T0 + 3600
 ah_api.cmd_scan(api, cfg, out=OUT, now=T1)
-G.AuctionLedger_ApiData = None
+G.UltimateAH_ApiData = None
 lua.execute(open(OUT, encoding="utf-8").read())
-d = G.AuctionLedger_ApiData
+d = G.UltimateAH_ApiData
 it = items_of(d)
 check("sold: one hour of data", d.soldHours == 1, d.soldHours)
 check("sold: partly bought commodity, cancelled ones ignored", it["4306"][7] == 120 * 24, it["4306"][7])
@@ -231,15 +231,15 @@ check("own auctions: lowest other skips mine", tbl["4306"]["min"] == 150 and tbl
 # 6. the addon's import
 lua.execute("""
 NOW = %d + 900
-local S = AuctionLedger.Scanner
+local S = UltimateAH.Scanner
 S:Store("4306", 4306, "Silk Cloth", 999, 999, 5, 1, NOW - 86400)           -- old in-game price
 S:Store("2589", 2589, "Linen Cloth", 105, 107, 40, 2, NOW - 60)            -- fresher than the API scan
-AuctionLedger.Watch:Add(4306, "Silk Cloth", 155)
+UltimateAH.Watch:Add(4306, "Silk Cloth", 155)
 PRINTS = {}
-IMPORT = { AuctionLedger.Api:Import() }
+IMPORT = { UltimateAH.Api:Import() }
 RUNTIMERS()
 """ % T1)
-p = lua.eval('AuctionLedger.db.prices[AuctionLedger:Scope()]')
+p = lua.eval('UltimateAH.db.prices[UltimateAH:Scope()]')
 check("import: started", G.IMPORT[1] is True, list(G.IMPORT.values()))
 e = p["4306"]
 check("import: API price replaces an older in-game price", e.min == 150 and e.qty == 580 and e.t == T1 and e.src == "api" and e.n == "Silk Cloth",
@@ -249,19 +249,19 @@ check("import: a newer in-game price is kept, the sale rate still arrives",
 check("import: new items and variants", p["7005"] is not None and p["11991:b12745"].min == 80000 and p["11991:b12745"].i == 11991)
 check("import: lowest other", p["4306"].minOther == 150)
 check("import: history merged", p["4306"].h[T1 // 86400][2] == 150, list(p["4306"].h.keys()))
-check("import: sale rate helper", lua.eval('AuctionLedger.Api.SoldPerDay(AuctionLedger.db.prices[AuctionLedger:Scope()]["4306"])') == 2880)
-sc = lua.eval('AuctionLedger.db.scans[AuctionLedger:Scope()]')
+check("import: sale rate helper", lua.eval('UltimateAH.Api.SoldPerDay(UltimateAH.db.prices[UltimateAH:Scope()]["4306"])') == 2880)
+sc = lua.eval('UltimateAH.db.scans[UltimateAH:Scope()]')
 check("import: scan status", sc.kind == "API" and sc.t == T1 and sc.api.house == 113 and sc.api.soldHours == 1, (sc.kind, sc.t))
 prints = "\n".join(G.PRINTS.values())
 check("import: watchlist alert from API data", "Watchlist:" in prints and "Silk Cloth" in prints, prints[:200])
 check("import: one summary line", "API scan from" in prints and "sale rates from 1 h" in prints, prints[-200:])
-check("import: data table freed", G.AuctionLedger_ApiData is None)
+check("import: data table freed", G.UltimateAH_ApiData is None)
 lua.execute(open(OUT, encoding="utf-8").read())
-lua.execute("IMPORT = { AuctionLedger.Api:Import() }")
+lua.execute("IMPORT = { UltimateAH.Api:Import() }")
 check("import: the same scan is not loaded twice", G.IMPORT[1] is False and G.IMPORT[2] == "already loaded", list(G.IMPORT.values()))
-lua.execute("AuctionLedger_ApiData.t = AuctionLedger_ApiData.t + 1; AuctionLedger_ApiData.faction = 'Horde'; IMPORT = { AuctionLedger.Api:Import() }")
+lua.execute("UltimateAH_ApiData.t = UltimateAH_ApiData.t + 1; UltimateAH_ApiData.faction = 'Horde'; IMPORT = { UltimateAH.Api:Import() }")
 check("import: data of the other faction is refused", G.IMPORT[1] is False, list(G.IMPORT.values()))
-check("import: sold text", (lua.eval('AuctionLedger.Api.SoldText(2880)'), lua.eval('AuctionLedger.Api.SoldText(2.44)')) == ("2880", "2.4"))
+check("import: sold text", (lua.eval('UltimateAH.Api.SoldText(2880)'), lua.eval('UltimateAH.Api.SoldText(2.44)')) == ("2880", "2.4"))
 
 # 7. detect: picks the house whose prices match the in-game scan, and the buyout convention
 ah_api.CONFIG = os.path.join(tmp, "cfg.json")

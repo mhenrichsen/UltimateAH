@@ -1,4 +1,4 @@
--- AuctionLedger: what to do with the things in your bags
+-- Ultimate AH: what to do with the things in your bags
 --
 -- For every tradeable item: what it would fetch on the AH (after the 5% cut) versus a vendor, and
 -- a suggested buyout price. The suggestion undercuts the cheapest auction from someone else by
@@ -233,7 +233,7 @@ function Sl:Post(key, unit, qty, duration)
   self.posting = p
   if confirm then
     -- the game wants a second yes (it does that for prices it finds suspicious)
-    local d = StaticPopup_Show and StaticPopup_Show("AUCTIONLEDGER_CONFIRM_POST", describe(p))
+    local d = StaticPopup_Show and StaticPopup_Show("ULTIMATEAH_CONFIRM_POST", describe(p))
     if d then d.data = p else self.posting = nil; return false, "The game asked for a confirmation that could not be shown." end
   end
   C_Timer.After(10, function() if self.posting == p then self.posting = nil; AL:Fire("AL_SELL_POSTED", key, false) end end)
@@ -241,8 +241,8 @@ function Sl:Post(key, unit, qty, duration)
 end
 
 if StaticPopupDialogs then
-  StaticPopupDialogs["AUCTIONLEDGER_CONFIRM_POST"] = {
-    text = "AuctionLedger: the auction house asks you to confirm this price.\n\nPost %s?",
+  StaticPopupDialogs["ULTIMATEAH_CONFIRM_POST"] = {
+    text = "Ultimate AH: the auction house asks you to confirm this price.\n\nPost %s?",
     button1 = YES or "Yes", button2 = NO or "No",
     OnAccept = function(_, p)
       if type(p) ~= "table" then return end

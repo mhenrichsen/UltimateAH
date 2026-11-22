@@ -6,7 +6,7 @@ import sys
 import lupa
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ADDON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AuctionLedger")
+ADDON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "UltimateAH")
 fails = 0
 
 
@@ -55,15 +55,15 @@ AL = lua.table()
 for f in ("Core.lua", "Tracker.lua", "Scanner.lua", "Value.lua", "Deals.lua", "Guild.lua", "Watch.lua", "Sell.lua", "Mail.lua", "Api.lua"):
     chunk = lua.eval("function(src, name) return assert((loadstring or load)(src, name)) end")(
         open(os.path.join(ADDON, f), encoding="utf-8").read(), "@" + f)
-    chunk("AuctionLedger", AL)
+    chunk("UltimateAH", AL)
 G = lua.globals()
-G.FIRE("ADDON_LOADED", "AuctionLedger")
+G.FIRE("ADDON_LOADED", "UltimateAH")
 G.FIRE("PLAYER_LOGIN")
 G.RUNTIMERS()
 lua.execute("""
-Sl = AuctionLedger.Sell
+Sl = UltimateAH.Sell
 POSTED = {}
-AuctionLedger:On("AL_SELL_POSTED", function(key, ok) POSTED[#POSTED + 1] = { key, ok } end)
+UltimateAH:On("AL_SELL_POSTED", function(key, ok) POSTED[#POSTED + 1] = { key, ok } end)
 function post(...) local ok, why = Sl:Post(...); return ok, why end
 """)
 post = G.post
@@ -89,7 +89,7 @@ check("deposit: asked from the game", lua.eval('Sl:Deposit(Sl:Locate("4306"), 2,
 # 3. refusals
 ok, why = post("4306", 190, 33, 2)
 check("post: refused while the auction house is closed", ok is False and "Open the auction house" in why, why)
-lua.execute("AuctionLedger.ahOpen = true")
+lua.execute("UltimateAH.ahOpen = true")
 check("post: needs a price", post("4306", None, 33, 2)[0] is False)
 ok, why = post("4306", 190, 50, 2)
 check("post: not more than you have", ok is False and "only have 33" in why, why)
@@ -105,13 +105,13 @@ check("post: commodity goes out with unit price, quantity and duration", ok is T
 ok, why = post("4306", 190, 33, 3)
 check("post: one at a time", ok is False and "previous" in why and len(calls()) == 1, why)
 lua.execute("PRINTS = {}")
-n_tx = lua.eval("#AuctionLedger.db.tx")
+n_tx = lua.eval("#UltimateAH.db.tx")
 G.FIRE("AUCTION_HOUSE_AUCTION_CREATED", 555)
 prints = "\n".join(G.PRINTS.values())
 check("post: confirmed by the game", lua.eval("Sl.posting") is None and "posted 33 x" in prints and "1s 90c each" in prints, prints)
 check("post: page is told", [tuple(p.values()) for p in G.POSTED.values()] == [("4306", True)])
-tx = lua.eval("AuctionLedger.db.tx[#AuctionLedger.db.tx]")
-check("post: lands in the ledger", lua.eval("#AuctionLedger.db.tx") == n_tx + 1 and tx.type == "post" and tx.qty == 33 and tx.unit == 190 and tx.total == 6270,
+tx = lua.eval("UltimateAH.db.tx[#UltimateAH.db.tx]")
+check("post: lands in the ledger", lua.eval("#UltimateAH.db.tx") == n_tx + 1 and tx.type == "post" and tx.qty == 33 and tx.unit == 190 and tx.total == 6270,
       (tx.type, tx.qty, tx.unit, tx.total))
 
 # 5. a single item
@@ -127,20 +127,20 @@ check("post: a refusal by the game is reported", lua.eval("Sl.posting") is None 
 lua.execute("CALLS = {}; CONFIRM = true")
 ok, why = post("4306", 1, 5, 2)
 popup = G.POPUPS[1]
-check("post: confirmation asked", ok is True and popup is not None and popup.which == "AUCTIONLEDGER_CONFIRM_POST" and "5 x" in popup.text, popup and popup.text)
-lua.execute('StaticPopupDialogs["AUCTIONLEDGER_CONFIRM_POST"].OnAccept(nil, POPUPS[1].data)')
+check("post: confirmation asked", ok is True and popup is not None and popup.which == "ULTIMATEAH_CONFIRM_POST" and "5 x" in popup.text, popup and popup.text)
+lua.execute('StaticPopupDialogs["ULTIMATEAH_CONFIRM_POST"].OnAccept(nil, POPUPS[1].data)')
 check("post: confirmed with the same numbers", calls()[-1] == ("confirm", 4306, 2, 5, 1), calls())
 G.FIRE("AUCTION_HOUSE_AUCTION_CREATED", 556)
 lua.execute("CONFIRM = false; CALLS = {}")
 ok, why = post("4306", 1, 5, 2)
 lua.execute("CONFIRM = true")
-lua.execute('Sl.posting = nil; post("4306", 1, 5, 2); StaticPopupDialogs["AUCTIONLEDGER_CONFIRM_POST"].OnCancel(nil, POPUPS[#POPUPS].data)')
+lua.execute('Sl.posting = nil; post("4306", 1, 5, 2); StaticPopupDialogs["ULTIMATEAH_CONFIRM_POST"].OnCancel(nil, POPUPS[#POPUPS].data)')
 check("post: saying no to the confirmation frees the page", lua.eval("Sl.posting") is None)
 lua.execute("CONFIRM = false")
 
 # 7. live auctions
 lua.execute("""
-AuctionLedger:Fire("AL_PRICE", "4306", { {200, 40}, {195, 100}, {195, 20}, {193, 60, true}, {210, 5}, {220, 9}, {230, 1}, {240, 1} })
+UltimateAH:Fire("AL_PRICE", "4306", { {200, 40}, {195, 100}, {195, 20}, {193, 60, true}, {210, 5}, {220, 9}, {230, 1}, {240, 1} })
 COMP, COMP_T = Sl:Competition("4306", 4)
 """)
 comp = [tuple(c.values()) for c in G.COMP.values()]
@@ -150,7 +150,7 @@ lua.execute("QUERIES = {}; R1 = Sl:RefreshLive('4306', 4306); R2 = Sl:RefreshLiv
 check("live: fresh data is not asked for again", G.R1 is False and list(G.QUERIES.values()) == [11991] and G.R2 is True, list(G.QUERIES.values()))
 lua.execute("R3 = Sl:RefreshLive('2589', 2589)")
 check("live: at most one search a second", G.R3 is False)
-lua.execute("AuctionLedger.ahOpen = false; Sl.lastQuery = nil; R4 = Sl:RefreshLive('2589', 2589)")
+lua.execute("UltimateAH.ahOpen = false; Sl.lastQuery = nil; R4 = Sl:RefreshLive('2589', 2589)")
 check("live: nothing is asked while the auction house is closed", G.R4 is False)
 
 # 8. rows for the page

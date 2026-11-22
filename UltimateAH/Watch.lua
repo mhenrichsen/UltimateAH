@@ -1,4 +1,4 @@
--- AuctionLedger: watchlist / sniper
+-- Ultimate AH: watchlist / sniper
 --
 -- Each watched item has a max price per unit. Whenever we see auctions (full scan, quick scan, or
 -- any AH search you do) listed at or below it, you get a chat line, an on-screen warning and a
@@ -72,7 +72,7 @@ function Wt:Alert(w, qty, cheapest, source)
     source and (" - " .. source) or "")
   AL:Print(msg)
   if AL.db.settings.watchAlert ~= false then
-    pcall(RaidNotice_AddMessage, RaidWarningFrame, "AuctionLedger: " .. (w.name or "watched item") .. " at " ..
+    pcall(RaidNotice_AddMessage, RaidWarningFrame, "Ultimate AH: " .. (w.name or "watched item") .. " at " ..
       AL.Money(cheapest, true), ChatTypeInfo and ChatTypeInfo.RAID_WARNING or { r = 1, g = 1, b = 0 })
     pcall(PlaySound, (SOUNDKIT and SOUNDKIT.RAID_WARNING) or 8959, "Master")
   end
@@ -114,19 +114,19 @@ AL:On("AL_PRICE", function(key, entries) Wt:Check(key, entries, "AH search") end
 ---------------------------------------------------------------------------
 -- commands
 ---------------------------------------------------------------------------
-AL:Command("watch", "watch an item: /al watch <item> <max price, e.g. 40g or 1g50s>", function(arg)
+AL:Command("watch", "watch an item: /uah watch <item> <max price, e.g. 40g or 1g50s>", function(arg)
   if arg == "" then AL.UI:Toggle("Watch"); return end
   -- the price is the last word (or two: "1g 50s")
   local item, price = arg:match("^(.-)%s+([%d%.]+[gsc]?%s*[%d%.]*[gsc]?)$")
   local max = price and AL.ParseMoney(price)
-  if not item or not max then AL:Print("usage: /al watch <item name or link> <max price per item, e.g. 40g>"); return end
+  if not item or not max then AL:Print("usage: /uah watch <item name or link> <max price per item, e.g. 40g>"); return end
   local id, name = Wt:Resolve(item)
   if not id then AL:Print("unknown item:", item, "(use a shift-clicked link or scan the AH first)"); return end
   Wt:Add(id, name, max)
   AL:Print(string.format("watching %s at %s or less", name, AL.Money(max, true)))
 end)
 
-AL:Command("unwatch", "stop watching an item: /al unwatch <item>", function(arg)
+AL:Command("unwatch", "stop watching an item: /uah unwatch <item>", function(arg)
   local id, name = Wt:Resolve(arg)
   if id and Wt:List()[tostring(id)] then Wt:Remove(id); AL:Print("stopped watching", name)
   else AL:Print("not on the watchlist:", arg) end

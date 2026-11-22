@@ -1,4 +1,4 @@
--- AuctionLedger: login reminder for sales waiting in the mail
+-- Ultimate AH: login reminder for sales waiting in the mail
 local _, AL = ...
 
 AL:On("AL_LOGIN", function()

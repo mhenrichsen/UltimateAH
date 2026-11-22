@@ -1,4 +1,4 @@
-"""AuctionLedger auto scans through Blizzard's Game Data API.
+"""UltimateAH auto scans through Blizzard's Game Data API.
 
 An addon cannot talk to the internet, so this script does it from outside the game: it downloads
 every auction of your auction house, works out the same prices the in-game scan does, estimates
@@ -36,7 +36,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG = os.path.join(HERE, "blizzard_api.json")
 STATE = os.path.join(HERE, "api_state")
 WOW = r"C:\Program Files (x86)\World of Warcraft\_forever_"
-ADDON = os.path.join(WOW, "Interface", "AddOns", "AuctionLedger")
+ADDON = os.path.join(WOW, "Interface", "AddOns", "UltimateAH")
 OUT = os.path.join(ADDON, "ApiData.lua")
 
 HISTORY_DAYS = 14          # daily prices handed to the addon
@@ -76,7 +76,7 @@ def set_wow_dir(path):
     global WOW, ADDON, OUT
     if path:
         WOW = path
-        ADDON = os.path.join(WOW, "Interface", "AddOns", "AuctionLedger")
+        ADDON = os.path.join(WOW, "Interface", "AddOns", "UltimateAH")
         OUT = os.path.join(ADDON, "ApiData.lua")
 
 
@@ -403,7 +403,7 @@ def sold_between(prev, cur, dt, prev_prices):
 # your own data from the game (optional): auction ids of your listings, in-game prices
 # ---------------------------------------------------------------------------
 def saved_variables():
-    """the newest AuctionLedgerDB of any account, as a lupa table (None without lupa or data)"""
+    """the newest UltimateAHDB of any account, as a lupa table (None without lupa or data)"""
     try:
         import lupa
     except ImportError:
@@ -412,7 +412,7 @@ def saved_variables():
     best = None
     if os.path.isdir(acc):
         for d in os.listdir(acc):
-            p = os.path.join(acc, d, "SavedVariables", "AuctionLedger.lua")
+            p = os.path.join(acc, d, "SavedVariables", "UltimateAH.lua")
             if os.path.exists(p) and (best is None or os.path.getmtime(p) > os.path.getmtime(best)):
                 best = p
     if not best:
@@ -421,7 +421,7 @@ def saved_variables():
         L = lupa.LuaRuntime()
         with open(best, encoding="utf-8") as f:
             L.execute(f.read())
-        return L.globals().AuctionLedgerDB
+        return L.globals().UltimateAHDB
     except Exception:
         return None
 
@@ -465,8 +465,8 @@ def lua_num(x):
 
 
 def write_lua(path, meta, items):
-    lines = ["-- written by ah_api.py (AuctionLedger auto scan); do not edit",
-             "AuctionLedger_ApiData = {"]
+    lines = ["-- written by ah_api.py (UltimateAH auto scan); do not edit",
+             "UltimateAH_ApiData = {"]
     for k, v in meta.items():
         lines.append("  %s = %s," % (k, json.dumps(v) if isinstance(v, str) else lua_num(v)))
     # one string per item: the game's Lua 5.1 allows 262,143 different constants in a file, and
@@ -505,7 +505,7 @@ def cmd_check(api, cfg):
 def cmd_detect(api, cfg, faction=None):
     db = saved_variables()
     if db is None:
-        raise ApiError("cannot read AuctionLedger's saved data (log out or /reload once after a full scan)")
+        raise ApiError("cannot read UltimateAH's saved data (log out or /reload once after a full scan)")
     if not faction:
         counts = collections.Counter()
         for scope, p in (db.prices.items() if db.prices else []):
@@ -654,7 +654,7 @@ def cmd_status():
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="AuctionLedger auto scans through Blizzard's API")
+    ap = argparse.ArgumentParser(description="UltimateAH auto scans through Blizzard's API")
     ap.add_argument("command", choices=["check", "detect", "scan", "auto", "status"])
     ap.add_argument("--faction", help="Alliance or Horde (detect: default is the one you scanned in-game)")
     ap.add_argument("--force", action="store_true", help="scan: write the data file even if Blizzard's data is unchanged")
