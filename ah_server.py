@@ -29,6 +29,7 @@ import collections
 import email.utils
 import gzip
 import http.server
+import importlib.util
 import itertools
 import json
 import math
@@ -623,7 +624,11 @@ def cmd_serve(folder, port, interval=300, rounds=None):
     httpd = http.server.ThreadingHTTPServer(("0.0.0.0", port), make_handler(folder))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     log("serving %s on port %d; this machine: %s" % (folder, httpd.server_address[1], host_line()))
-    n, scanned = 0, False
+    # a restarted service trains at its first quiet moment: the scan before the restart was never learned from
+    n, scanned = 0, True
+    log("learned forecasts: %s" % ("numpy and scikit-learn found, training after every scan"
+                                   if importlib.util.find_spec("numpy") and importlib.util.find_spec("sklearn")
+                                   else "numpy / scikit-learn are not installed, so none"))
     while rounds is None or n < rounds:
         n += 1
         cfg = dict(ah_api.load_config(), region=REGION)
