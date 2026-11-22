@@ -11,7 +11,8 @@ Everything is drawn from signed distance fields in numpy, supersampled and
 downsampled with LANCZOS. No fonts, no external assets.
 
 Run:  python media/make_logo.py
-Writes logo.png (512) and logo_64.png (a separately rendered 64 px master).
+Writes logo.png (512), logo_64.png (a separately rendered 64 px master) and the addon's own copy,
+UltimateAH/logo.tga: the game reads TGA (32-bit, uncompressed, sides a power of two), not PNG.
 """
 import os
 
@@ -283,5 +284,7 @@ def render(size, ps, small):
 
 if __name__ == "__main__":
     render(512, 4.0, small=False).save(os.path.join(HERE, "logo.png"))
-    render(64, 2.0, small=True).save(os.path.join(HERE, "logo_64.png"))
+    small = render(64, 2.0, small=True)
+    small.save(os.path.join(HERE, "logo_64.png"))
+    small.save(os.path.join(HERE, "..", "UltimateAH", "logo.tga"))
     print("wrote logo.png and logo_64.png")

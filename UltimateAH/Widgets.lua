@@ -104,6 +104,16 @@ function W.Shadow(f)
 end
 
 -- a circle (texture + round mask)
+-- the addon's logo (logo.tga in this folder, drawn by media/make_logo.py in the repository)
+W.LOGO = "Interface\\AddOns\\UltimateAH\\logo"
+
+function W.Logo(parent, size, layer)
+  local t = parent:CreateTexture(nil, layer or "ARTWORK")
+  t:SetSize(size, size)
+  t:SetTexture(W.LOGO)
+  return t
+end
+
 function W.Circle(parent, size, c, layer)
   local t = parent:CreateTexture(nil, layer or "ARTWORK")
   t:SetSize(size, size)

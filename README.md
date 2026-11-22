@@ -16,7 +16,7 @@ layout code with sample data. Fonts and icons differ a little from the game.
   checked in the game.
 - The 2.x work has only been tested outside the game so far: the new look, the Watch, Sell and
   Settings pages, posting auctions from the Sell page, and loading API scan data. It is covered
-  by 226 automated checks against a mocked game API and by the offline renders, but it has not
+  by 254 automated checks against a mocked game API and by the offline renders, but it has not
   been run in the live client yet. Treat 2.x as a beta.
 - The API scan script and the server scan have been run against Blizzard's real API (EU).
 
@@ -27,6 +27,7 @@ layout code with sample data. Fonts and icons differ a little from the game.
 | `UltimateAH/` | The addon. Copy this folder into `_forever_\Interface\AddOns`. Its [README](UltimateAH/README.md) describes every page and command. |
 | `ah_api.py` | Auto scans: downloads your auction house from Blizzard's Game Data API every hour and writes `ApiData.lua` for the addon. |
 | `ah_server.py` | Server scan: every Forever auction house, both factions, every hour, into a SQLite database. Runs as a small Docker service (`Dockerfile`). |
+| `ah_ml.py` | The server's learned price forecasts: trained every hour on the database, handed out only while they beat "unchanged". Needs numpy and scikit-learn. |
 | `deploy.py` | Copies `UltimateAH/` into the game folder. |
 | `sync_accounts.py` | Merges the addon's saved data across WoW accounts on one PC. |
 | `test_*.py`, `tests_v2.py` | Tests: the addon's Lua runs in [lupa](https://pypi.org/project/lupa/) against a mocked WoW API; the scan scripts run against a fake Blizzard API. |
@@ -99,6 +100,7 @@ every Alliance and Horde house of the region when it has, and hands out the resu
 | `/eu-<house>.lua.gz` | What the addon loads: current prices, 14 days of daily prices, units sold per day, price patterns. |
 | `/history.db.gz` | A SQLite database: one row per auction house, item and day with the mean market price, the lowest buyout, the listed quantity and the units sold; prices and sales by hour of the day; the forecast's check per house. |
 | `/index.json` | The houses, the time of their last scan, the days of history, and how the forecast did against "unchanged". |
+| `/ml.json` | The last training of the learned forecasts: rows, errors against "unchanged", on or off. |
 | `/healthz` | A small status answer for health checks. |
 
 The previous snapshot of each house (needed to see what was sold) and the log stay in the data
@@ -129,7 +131,7 @@ The server scan keeps 30 days of history, and from it works out for every item:
 | Position | Where today's price sits among the last 30 days: "high for the month", "low for the month". | 7 days |
 | Weekday | The weekday the item is usually cheapest and the one it is usually dearest, against the days around it. | about 4 weeks |
 | Hour | The hour of the day it is usually cheapest and dearest, and the hour most units sell. Only for items with at least 5 auctions. | 5 days per hour |
-| Forecast | The expected market price in 7 days, from the trend and from how far the price is from its monthly median. | about 2 weeks |
+| Forecast | The expected market price tomorrow and in 7 days, with the range the price in 7 days will most likely be in. Learned from every item's history: see [Learned forecasts](#learned-forecasts). | 1 to 3 weeks |
 
 The addon shows them in item tooltips, as a Trend column on the Prices page, under the price graph,
 and as a one-line hint on the Sell page ("usually 12% higher on Saturday", "high for the month").
@@ -138,11 +140,35 @@ They are statistics, not promises, and they are built to say nothing rather than
 
 - A weekday or an hour is only named when it stands out clearly against the item's own noise. On
   random prices the checks name a weekday in about 3% of items and an hour in under 1%.
-- The forecast is tested every day against "the price stays the same" on what the last weeks' prices
-  really did. A house only gets forecasts while the forecast is the better of the two; the scan log
-  and `/index.json` show both errors.
+- A forecast is only handed out while it beats "the price stays the same" on days it had not seen.
+  `/ml.json`, `/index.json` and the scan log show both errors.
 - Thirty days is all Blizzard's terms allow anyone to keep, so there is no seasonality beyond the
   week: holiday events and patch cycles are out of reach.
+
+### Learned forecasts
+
+After every hourly scan the service retrains its forecast models on the whole database
+(`ah_ml.py`, gradient-boosted trees from scikit-learn):
+
+- **What it learns from.** One row is one item on one day, from every auction house: how the price
+  moved over the last 1, 2, 3 and 7 days, how far it is from its weekly and monthly median, how
+  jumpy it is, where it sits in its range, the gap between market price and lowest buyout, how much
+  is listed and sold, and the weekday. The answer to learn is the price change one day and seven
+  days later.
+- **What it makes.** Four models: the price in a day, the price in a week, and the 20% and 80% ends
+  of the range the price in a week will most likely be in.
+- **How it is checked.** Every training holds back the latest fifth of the days, forecasts them with
+  a model that has not seen them, and compares the error with "the price stays the same". A forecast
+  is handed out only when its error is under 97% of that; the range only when it caught between 45%
+  and 75% of the real prices. A market that stops being predictable loses its forecasts at the next
+  training.
+- **What it costs.** With 30 days of all eight EU houses (3.6 million item-days) a training takes
+  about a minute on one CPU and 420 MB, in a process of its own.
+
+While the learned week-ahead forecast is off, a plain one (the week's trend plus a pull towards the
+monthly median, with two weights fitted per house once a day) stands in, under the same rule.
+The first learned one-day forecasts need about a week of history, the week-ahead ones about three.
+`python ah_ml.py info --dir <folder>` and `/ml.json` show how the last training went.
 
 ### Units sold per day
 
@@ -154,12 +180,13 @@ auctions cannot be told apart perfectly, so read the number as an estimate.
 ## Development
 
 ```
-pip install lupa pillow
+pip install lupa pillow numpy scikit-learn
 python luacheck.py
 python test_tracker.py
 python test_ui.py
 python test_api.py
 python test_server.py
+python test_ml.py
 python test_sell.py
 python render_ui.py renders
 ```

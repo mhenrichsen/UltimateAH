@@ -79,11 +79,15 @@ end
 --
 -- The server scan keeps 30 days of history and works out, per item: the trend of the last week,
 -- where today's price sits in the month, the weekday and the hour of the day the item is usually
--- cheapest and dearest, when it sells, and (once it has proven better than "the price stays the
--- same") a forecast for a week ahead. They arrive as ApiData's "ins" table; e.ins holds the numbers
--- in the order of FIELDS. Weekdays and hours are UTC on the wire.
+-- cheapest and dearest, when it sells, and forecasts for tomorrow and a week ahead. The forecasts are
+-- learned on the server from every item's history (gradient-boosted trees, retrained every hour) and
+-- are only sent while they beat "the price stays the same" on days the model had not seen. They
+-- arrive as ApiData's "ins" table; e.ins holds the numbers in the order of FIELDS. Weekdays and
+-- hours are UTC on the wire.
 ---------------------------------------------------------------------------
-local FIELDS = { "days", "pos", "trend", "wdLo", "wdLoPct", "wdHi", "wdHiPct", "hrLo", "hrHi", "hrPct", "hrSell", "in7" }
+local FIELDS = { "days", "pos", "trend", "wdLo", "wdLoPct", "wdHi", "wdHiPct", "hrLo", "hrHi", "hrPct", "hrSell", "in7",
+                 "in1", "lo7", "hi7" }
+local FORECAST_MOVE = 0.08                 -- a forecast this far from today's price is worth a hint
 local DAY_NAME = { [0] = "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" }
 local DAY_SHORT = { [0] = "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" }
 local STEADY = 10                          -- under 1% a day reads as "steady"
@@ -150,7 +154,13 @@ function A.InsightLines(e)
   if p.hrLo >= 0 then hr[#hr + 1] = string.format("cheapest ~%s, dearest ~%s", clock(p.hrLo), clock(p.hrHi)) end
   if p.hrSell >= 0 then hr[#hr + 1] = "sells most ~" .. clock(p.hrSell) end
   if #hr > 0 then out[#out + 1] = { "By hour", table.concat(hr, ", ") } end
-  if p.in7 > 0 then out[#out + 1] = { "In 7 days", "~" .. AL.Money(p.in7) } end
+  local fc = {}
+  if p.in1 > 0 then fc[#fc + 1] = "tomorrow ~" .. AL.Money(p.in1) end
+  if p.in7 > 0 then
+    fc[#fc + 1] = "in 7 days ~" .. AL.Money(p.in7) ..
+      ((p.lo7 > 0 and p.hi7 > 0) and (" (" .. AL.Money(p.lo7) .. " - " .. AL.Money(p.hi7) .. ")") or "")
+  end
+  if #fc > 0 then out[#out + 1] = { "Forecast", table.concat(fc, ", ") } end
   return out
 end
 
@@ -163,6 +173,11 @@ function A.SellAdvice(e)
     local ahead = (p.wdHi - utcWeekday()) % 7
     if ahead == 0 then return "usually dearest today (" .. DAY_NAME[p.wdHi] .. ")", "green" end
     if ahead <= 3 then return string.format("usually %d%% higher on %s", p.wdHiPct, DAY_NAME[p.wdHi]), "gold" end
+  end
+  if p.in7 > 0 and (e.mkt or 0) > 0 then
+    local move = p.in7 / e.mkt - 1
+    if move >= FORECAST_MOVE then return string.format("forecast: +%d%% in a week", math.floor(move * 100 + 0.5)), "gold" end
+    if move <= -FORECAST_MOVE then return string.format("forecast: %d%% in a week", math.floor(move * 100 + 0.5)), "green" end
   end
   local up, down = p.trend and p.trend >= STEADY, p.trend and p.trend <= -STEADY
   if p.pos >= 85 then return "high for " .. span(p) .. (up and ", still rising" or ""), "green" end

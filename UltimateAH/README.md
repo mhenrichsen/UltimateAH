@@ -68,11 +68,13 @@ same item stayed behind; a commodity listing whose quantity dropped was partly b
 
 With the server scan's 30 days of history come **price patterns**: the trend of the last week, whether
 today's price is high or low for the month, the weekday and hour an item is usually cheapest and
-dearest, when it sells, and a 7-day forecast. They show in tooltips, as the Trend column on Prices,
-under the price graph and as a hint on the Sell page ("usually 12% higher on Saturday"). A pattern is
-only shown when it stands out clearly, and the forecast only while it beats "the price stays the
-same" on past data, so a new server shows nothing for the first week. They can be switched off in
-Settings.
+dearest, when it sells, and forecasts for tomorrow and for a week ahead (with the range the price
+will most likely be in). The forecasts are learned on the server from every item's history and
+retrained every hour. Everything shows in tooltips, as the Trend column on Prices, under the price
+graph and as a hint on the Sell page ("usually 12% higher on Saturday", "forecast: +9% in a week").
+A pattern is only shown when it stands out clearly, and a forecast only while it beats "the price
+stays the same" on days the model had not seen, so a new server shows nothing for the first week.
+They can be switched off in Settings.
 
 Setup without an API key (EU region): the project's server scans every Forever auction house each
 hour, and the script downloads your house's file from it.

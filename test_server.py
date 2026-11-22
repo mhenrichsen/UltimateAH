@@ -309,6 +309,10 @@ private = ["/state-eu-113.json.gz", "/history.db", "/scan.log", "/../ah_api.py",
 check("http: private files and paths outside the folder are not handed out",
       all(http(p)[0] == 404 for p in private), [(p, http(p)[0]) for p in private])
 check("http: the database download is there", http("/history.db.gz", method="HEAD")[0] == 200)
+check("http: no training report before the first training", http("/ml.json")[0] == 404)
+with open(os.path.join(DIR3, "ml.json"), "w", encoding="utf-8") as f:
+    f.write('{"t": 1}')
+check("http: the training report is handed out, the model file is not", http("/ml.json")[0] == 200 and http("/ml.pkl")[0] == 404)
 httpd.shutdown()
 
 # 8. price patterns: the pure functions on made-up series

@@ -68,7 +68,12 @@ SERVER = "https://dytm1zc1vmdd7h24ebh1yae9.46.224.200.140.sslip.io"
 #   hrSell   the hour of the day (UTC) around which most units sell, -1 = unknown
 #   in7      expected market price in 7 days (copper), 0 = no forecast (too little history, or the
 #            forecast did not beat "the price stays the same" on past data)
-INS_FIELDS = ("days", "pos", "trend", "wdLo", "wdLoPct", "wdHi", "wdHiPct", "hrLo", "hrHi", "hrPct", "hrSell", "in7")
+#   in1      expected market price in 1 day, 0 = no forecast
+#   lo7/hi7  the range the price in 7 days will most likely be in (20% .. 80%), 0 = none
+# in1, lo7 and hi7 come from the learned forecasts (ah_ml.py); so does in7 while those are on,
+# otherwise it is the plain trend-and-reversion forecast of ah_server.py
+INS_FIELDS = ("days", "pos", "trend", "wdLo", "wdLoPct", "wdHi", "wdHiPct", "hrLo", "hrHi", "hrPct", "hrSell", "in7",
+              "in1", "lo7", "hi7")
 MIN_LEFT = {"SHORT": 0, "MEDIUM": 1800, "LONG": 7200, "VERY_LONG": 43200}
 TL_CODE = {"SHORT": 0, "MEDIUM": 1, "LONG": 2, "VERY_LONG": 3}
 TL_MIN = [0, 1800, 7200, 43200]

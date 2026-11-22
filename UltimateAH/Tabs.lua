@@ -462,7 +462,7 @@ function UI:BuildSettings(v)
         function() return S().tooltip end, function(x) S().tooltip = x end },
       { "Post-price suggestion", "What to post an item for, and what your stack is worth.",
         function() return S().tooltipPost ~= false end, function(x) S().tooltipPost = x end },
-      { "Price patterns", "Trend, the usual cheapest and dearest day and hour, and a forecast.",
+      { "Price patterns", "Trend, the usual cheapest and dearest day and hour, and forecasts.",
         function() return S().tooltipPatterns ~= false end, function(x) S().tooltipPatterns = x end },
     } },
     { "CHAT", {

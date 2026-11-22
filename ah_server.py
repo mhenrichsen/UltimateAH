@@ -36,12 +36,14 @@ import os
 import re
 import shutil
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
 import zlib
 
 import ah_api
+import ah_ml
 from ah_api import ApiError, log
 
 REGION = os.environ.get("AH_REGION", "eu")
@@ -111,10 +113,11 @@ def write_gz(path, data):
     os.replace(tmp, path)
 
 
-def build_items(db, hk, day, table):
+def build_items(db, hk, day, table, folder=None):
     """the addon's item rows from today's prices plus the database's history, sale counts and price
     patterns -> (items, hours of compared scans behind the sale rates, the house's forecast check)"""
     hist, ins, samples = {}, {}, []
+    learned = ah_ml.predict_house(folder, db, hk, day) if folder else {}      # {} until a training beat "unchanged"
     row = db.execute("SELECT day, a, b, n, err, naive, ok FROM model WHERE house = ?", (hk,)).fetchone()
     model = (row[1], row[2]) if row and row[6] else None
     refit = not row or row[0] < day                      # once a day
@@ -134,13 +137,18 @@ def build_items(db, hk, day, table):
         if len(days) >= INSIGHT_DAYS:
             p = table.get(key)
             if p and p["mkt"] > 0:
-                ins[key] = insight(days, logs, day, p["mkt"], profs.get(key), model)
+                row = insight(days, logs, day, p["mkt"], profs.get(key), model)
+                f = learned.get(key)
+                if f and f[1] > 0:
+                    row[-1] = ah_api.sig3(f[1])           # the learned week ahead replaces the plain one
+                ins[key] = row + ([ah_api.sig3(f[0]), ah_api.sig3(f[2]), ah_api.sig3(f[3])] if f else [0, 0, 0])
             if refit and zlib.crc32(key.encode("utf-8")) % FIT_SAMPLE == 0:
                 samples.extend(fit_samples(days, logs))
     if refit:
         row = (day,) + fit(samples)
         db.execute("INSERT OR REPLACE INTO model (house, day, a, b, n, err, naive, ok) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (hk,) + row)
-    check = {"checks": row[3], "error": round(row[4], 4), "unchanged": round(row[5], 4), "on": bool(row[6])}
+    check = {"checks": row[3], "error": round(row[4], 4), "unchanged": round(row[5], 4), "on": bool(row[6]),
+             "learned": bool(learned)}
     since = day - ah_api.SOLD_DAYS
     cover = db.execute("SELECT COALESCE(SUM(seconds), 0) FROM cover WHERE house = ? AND day > ?", (hk, since)).fetchone()[0]
     rates = cover >= ah_api.MIN_COVER
@@ -409,7 +417,7 @@ def scan_house(api, db, folder, h, now=None, force=False):
     db.execute("UPDATE house SET ruleset = ?, faction = ?, name = ?, t = ?, modified = ?, auctions = ?, items = ? WHERE hk = ?",
                (RULESET, faction, snap.get("name") or h.get("name"), t, snap.get("modified"), len(aucs), len(table), hk))
 
-    items, sold_hours, check = build_items(db, hk, day, table)
+    items, sold_hours, check = build_items(db, hk, day, table, folder)
     n_days = db.execute("SELECT COUNT(DISTINCT t / 86400) FROM scan WHERE house = ?", (hk,)).fetchone()[0]
     n_ins = sum(1 for it in items.values() if it.get("ins"))
     meta = collections.OrderedDict(v=1, t=t, region=region, house=hid, faction=faction,
@@ -426,11 +434,13 @@ def scan_house(api, db, folder, h, now=None, force=False):
     log("house %s %s: %d auctions, %d items, %d units sold since the last scan, sale rates from %.1f h; "
         "%d day(s) of history, price patterns for %d items, forecast %s" % (
             name, faction, len(aucs), len(table), n_sold, sold_hours, n_days, n_ins,
-            ("on" if check["on"] else "off") + (" (error %.1f%% against %.1f%% for an unchanged price, %d checks)" % (
-                check["error"] * 100, check["unchanged"] * 100, check["checks"]) if check["checks"] >= FIT_MIN else "")))
+            ("learned" if check["learned"] else "on" if check["on"] else "off") + (
+                " (error %.1f%% against %.1f%% for an unchanged price, %d checks)" % (
+                    check["error"] * 100, check["unchanged"] * 100, check["checks"]) if check["checks"] >= FIT_MIN else "")))
     return {"region": region, "house": hid, "ruleset": RULESET, "faction": faction, "t": t,
             "modified": snap.get("modified"), "auctions": len(aucs), "items": len(table),
-            "soldHours": sold_hours, "days": n_days, "patterns": n_ins, "forecast": check, "file": name + ".lua.gz"}
+            "soldHours": sold_hours, "days": n_days, "patterns": n_ins, "forecast": check,
+            "learned": check["learned"], "file": name + ".lua.gz"}
 
 
 def read_index(folder):
@@ -514,7 +524,7 @@ def cmd_info(folder):
 # serve: the scan loop plus a small read-only file server
 # ---------------------------------------------------------------------------
 # only these leave the folder: the snapshots (state-*) and the log stay private
-PUBLIC = re.compile(r"^(index\.json|[a-z]{2}-\d+\.lua\.gz|history\.db\.gz)$")
+PUBLIC = re.compile(r"^(index\.json|ml\.json|[a-z]{2}-\d+\.lua\.gz|history\.db\.gz)$")
 TYPES = {".json": "application/json", ".gz": "application/gzip"}
 
 
@@ -597,12 +607,23 @@ def make_handler(folder):
     return Handler
 
 
+def work(script, command, folder):
+    """one piece of the hour's work in a process of its own: a scan holds half a gigabyte for a
+    few seconds, and this way it goes back to the machine instead of staying with the service"""
+    here = os.path.dirname(os.path.abspath(__file__))
+    try:
+        return subprocess.run([sys.executable, os.path.join(here, script), command, "--dir", folder], timeout=1800).returncode
+    except (OSError, subprocess.SubprocessError) as e:
+        log("error:", repr(e))
+        return 1
+
+
 def cmd_serve(folder, port, interval=300, rounds=None):
     os.makedirs(folder, exist_ok=True)
     httpd = http.server.ThreadingHTTPServer(("0.0.0.0", port), make_handler(folder))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     log("serving %s on port %d; this machine: %s" % (folder, httpd.server_address[1], host_line()))
-    n = 0
+    n, scanned = 0, False
     while rounds is None or n < rounds:
         n += 1
         cfg = dict(ah_api.load_config(), region=REGION)
@@ -611,7 +632,12 @@ def cmd_serve(folder, port, interval=300, rounds=None):
         else:
             try:
                 if cmd_probe(folder, cfg=cfg):
-                    cmd_run(folder, cfg=cfg)
+                    work("ah_server.py", "run", folder)
+                    scanned = True
+                    log("this machine: %s" % host_line())
+                elif scanned:                             # every house is in: learn from the new hour
+                    scanned = False
+                    work("ah_ml.py", "train", folder)
                     log("this machine: %s" % host_line())
             except ApiError as e:
                 log("failed:", e)

@@ -285,10 +285,12 @@ ah_api.write_lua(OUTP, collections.OrderedDict(v=1, t=T2, region="eu", house=113
     "2589": dict(row, ins=[9, 50, 9999, -1, 0, -1, 0, -1, -1, 0, -1, 0]),
     "3577": dict(row, ins=[30, 96, 14, -1, 0, -1, 0, -1, -1, 0, -1, 0]),
     "2770": dict(row, ins=[12, 40, 0, -1, 0, -1, 0, 6, 18, 9, -1, 0]),
+    "8831": dict(row, ins=[30, 50, 0, -1, 0, -1, 0, -1, -1, 0, -1, 180, 165, 150, 210]),
+    "8170": dict(row, ins=[30, 50, 0, -1, 0, -1, 0, -1, -1, 0, -1, 140, 0, 0, 0]),
     "7005": dict(row),
 })
 pm, pi, pp = ah_api.parse_file(open(OUTP, encoding="utf-8").read())
-check("patterns: the file keeps them apart from the items", len(pi) == 5 and len(pp) == 4 and pp["4306"][2] == 25 and pm["insDays"] == 30, (len(pi), len(pp)))
+check("patterns: the file keeps them apart from the items", len(pi) == 7 and len(pp) == 6 and pp["4306"][2] == 25 and pm["insDays"] == 30, (len(pi), len(pp)))
 check("patterns: parse_data still gives only the items", ah_api.parse_data(open(OUTP, encoding="utf-8").read())[1] == pi)
 lua.execute("""
 NOW = %d + 60
@@ -311,12 +313,23 @@ check("patterns: an unknown trend is nil", lua.eval('UltimateAH.Api.Insight(P["2
 check("patterns: trend text", ("+2.5%" in lua.eval('UltimateAH.Api.TrendText(25)'), "-1.5%" in lua.eval('UltimateAH.Api.TrendText(-15)'),
                                "steady" in lua.eval('UltimateAH.Api.TrendText(4)')) == (True, True, True))
 lines = [(l[1], l[2].replace("|r", "")) for l in lua.eval('UltimateAH.Api.InsightLines(P["4306"])').values()]
-check("patterns: four tooltip lines for an item with everything", [l[0] for l in lines] == ["Trend", "Usually", "By hour", "In 7 days"], lines)
+check("patterns: four tooltip lines for an item with everything", [l[0] for l in lines] == ["Trend", "Usually", "By hour", "Forecast"], lines)
 check("patterns: trend and range in one line", lines[0][1] == "+2.5% a day, high for the month", lines[0])
 check("patterns: weekdays by name with their percent",
       lines[1][1] == "cheapest %s (-8%%), dearest %s (+12%%)" % (DAYS[(WD + 5) % 7][:3], DAYS[(WD + 2) % 7][:3]), lines[1])
 check("patterns: hours are shown on the player's clock", lines[2][1] == "cheapest ~08:00, dearest ~20:00, sells most ~21:00", lines[2])
-check("patterns: the forecast is a price", lines[3][1].startswith("~") and "75" in lines[3][1], lines[3])
+check("patterns: the forecast is a price", lines[3][1].startswith("in 7 days ~") and "75" in lines[3][1] and "(" not in lines[3][1], lines[3])
+ins = lua.eval('UltimateAH.Api.Insight(P["8831"])')
+check("forecasts: the learned fields by name", ins.in1 == 165 and ins.in7 == 180 and ins.lo7 == 150 and ins.hi7 == 210, dict(ins))
+check("forecasts: fields a server did not send are 0", lua.eval('UltimateAH.Api.Insight(P["4306"]).in1') == 0)
+lines = [(l[1], l[2].replace("|r", "")) for l in lua.eval('UltimateAH.Api.InsightLines(P["8831"])').values()]
+fc = [l[1] for l in lines if l[0] == "Forecast"]
+check("forecasts: tomorrow, a week ahead and its range in one line",
+      len(fc) == 1 and fc[0].startswith("tomorrow ~") and ", in 7 days ~" in fc[0] and " (" in fc[0] and " - " in fc[0] and fc[0].endswith(")"), lines)
+adv = lua.eval('{ UltimateAH.Api.SellAdvice(P["8831"]) }')
+check("sell hint: a forecast well above today's price says waiting may pay", (adv[1], adv[2]) == ("forecast: +13% in a week", "gold"), list(adv.values()))
+adv = lua.eval('{ UltimateAH.Api.SellAdvice(P["8170"]) }')
+check("sell hint: a forecast well below today's price says sell now", (adv[1], adv[2]) == ("forecast: -12% in a week", "green"), list(adv.values()))
 check("patterns: nine days of history say little", len(list(lua.eval('UltimateAH.Api.InsightLines(P["2589"])').values())) == 0)
 adv = lua.eval('{ UltimateAH.Api.SellAdvice(P["4306"]) }')
 check("sell hint: a dearer weekday within three days", (adv[1], adv[2]) == ("usually 12%% higher on %s" % DAYS[(WD + 2) % 7], "gold"), list(adv.values()))

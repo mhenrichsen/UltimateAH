@@ -171,10 +171,8 @@ function UI:Create()
   edge:SetWidth(1)
   edge:SetColorTexture(C.border[1], C.border[2], C.border[3], 1)
 
-  local logo = W.Circle(side, 28, C.accent)
-  logo:SetPoint("TOPLEFT", 18, -20)
-  local logoTxt = W.Label(side, "UA", "UAHFontBright")
-  logoTxt:SetPoint("CENTER", logo, "CENTER", 0, 0)
+  local logo = W.Logo(side, 32)
+  logo:SetPoint("TOPLEFT", 16, -18)
   local title = W.Label(side, "Ultimate AH", "UAHFontH2")
   title:SetPoint("LEFT", logo, "RIGHT", 10, 6)
   local ver = W.Label(side, "Auction house toolkit", "UAHFontLabel")
@@ -949,7 +947,7 @@ function UI:ShowPriceGraph(key)
   if not e then return end
   if not self.pgraph then
     local f = W.Panel(self.frame, W.C.bg)
-    f:SetSize(680, 398)
+    f:SetSize(680, 416)
     f:SetPoint("CENTER", self.frame, "CENTER", 90, -10)
     f:SetFrameLevel(self.frame:GetFrameLevel() + 20)
     W.Shadow(f)
@@ -968,13 +966,16 @@ function UI:ShowPriceGraph(key)
     f.graph:SetPoint("TOPLEFT", 18, -62)
     local legend = W.Label(f, W.ACCENT .. "——|r  Market        " .. W.GOLD .. "——|r  Lowest buyout", "UAHFontMuted")
     legend:SetPoint("BOTTOMRIGHT", -18, 12)
-    -- what the server scan's history says: trend and weekdays above, hours and forecast below
-    f.patterns = { W.Label(f, "", "UAHFontMuted"), W.Label(f, "", "UAHFontMuted") }
-    f.patterns[1]:SetPoint("BOTTOMLEFT", 18, 30)
-    f.patterns[1]:SetWidth(640)
-    f.patterns[2]:SetPoint("BOTTOMLEFT", 18, 12)
-    f.patterns[2]:SetWidth(400)
-    for _, l in ipairs(f.patterns) do l:SetJustifyH("LEFT"); l:SetWordWrap(false) end
+    -- what the server scan's history says: trend and weekdays, hours, forecast (next to the legend)
+    f.patterns = {}
+    for i = 1, 3 do
+      local l = W.Label(f, "", "UAHFontMuted")
+      l:SetPoint("BOTTOMLEFT", 18, 48 - (i - 1) * 18)
+      l:SetWidth(i == 3 and 400 or 640)
+      l:SetJustifyH("LEFT")
+      l:SetWordWrap(false)
+      f.patterns[i] = l
+    end
     self.pgraph = f
   end
   local f = self.pgraph
@@ -996,15 +997,18 @@ function UI:ShowPriceGraph(key)
     { name = "Lowest", color = W.C.gold, points = mn, thick = 1.5, alpha = 0.75 },
     { name = "Market", color = W.C.accent, points = mk, thick = 2.5 },
   })
-  local top, bottom = {}, {}
+  local rows = { {}, {}, {} }
   for _, l in ipairs(AL.Api and AL.Api.InsightLines(e) or {}) do
-    if l[1] == "Trend" then top[#top + 1] = "Trend " .. l[2]
-    elseif l[1] == "Usually" then top[#top + 1] = "usually " .. l[2]
-    else bottom[#bottom + 1] = l[1] .. ": " .. l[2] end
+    if l[1] == "Trend" then table.insert(rows[1], "Trend " .. l[2])
+    elseif l[1] == "Usually" then table.insert(rows[1], "usually " .. l[2])
+    elseif l[1] == "By hour" then table.insert(rows[2], "By hour: " .. l[2])
+    else table.insert(rows[3], l[1] .. ": " .. l[2]) end
   end
-  if #top == 0 then top, bottom = bottom, {} end
-  f.patterns[1]:SetText(table.concat(top, "  \194\183  "))
-  f.patterns[2]:SetText(table.concat(bottom, "  \194\183  "))
+  local n = 0
+  for i = 1, 3 do f.patterns[i]:SetText("") end
+  for _, r in ipairs(rows) do                      -- no gaps: the lines that have something, from the top
+    if #r > 0 then n = n + 1; f.patterns[n]:SetText(table.concat(r, "  \194\183  ")) end
+  end
   f:Show()
 end
 
@@ -1150,7 +1154,7 @@ function UI:MinimapButton()
   b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   b:RegisterForDrag("LeftButton")
   local icon = b:CreateTexture(nil, "BACKGROUND")
-  icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_02")
+  icon:SetTexture(W.LOGO)
   icon:SetSize(20, 20)
   icon:SetPoint("CENTER", 0, 1)
   local border = b:CreateTexture(nil, "OVERLAY")
@@ -1213,11 +1217,8 @@ function UI:AttachToAH()
   p:SetSize(210, 304)
   p:SetPoint("TOPLEFT", AuctionHouseFrame, "TOPRIGHT", 6, -24)
   W.Shadow(p)
-  local logo = W.Circle(p, 20, W.C.accent)
-  logo:SetPoint("TOPLEFT", 14, -12)
-  local lt = W.Label(p, "UA", "UAHFontLabel")
-  lt:SetPoint("CENTER", logo, "CENTER", 0, 0)
-  lt:SetTextColor(1, 1, 1)
+  local logo = W.Logo(p, 22)
+  logo:SetPoint("TOPLEFT", 14, -11)
   local title = W.Label(p, "Ultimate AH", "UAHFontH2")
   title:SetPoint("LEFT", logo, "RIGHT", 8, 0)
   self.ahFull = W.Button(p, "Full Scan", 172, function() AL.Scanner:Full() end, "primary")

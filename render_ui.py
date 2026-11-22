@@ -228,11 +228,11 @@ local trends = { -22, -8, 0, 0, 4, 12, 31, 0, -14, 6 }
 for n, id in ipairs(ids) do
   local e = A.db.prices[scope][tostring(id)]
   local tr = trends[(n - 1) % #trends + 1]
-  e.ins = { 30, math.random(5, 95), tr, -1, 0, -1, 0, -1, -1, 0, -1, 0 }
+  e.ins = { 30, math.random(5, 95), tr, -1, 0, -1, 0, -1, -1, 0, -1, 0, 0, 0, 0 }
   e.insT = NOW - 1800
 end
-A.db.prices[scope]["12360"].ins = { 30, 92, 14, 1, -6, 5, 9, 3, 19, 8, 20, 455000 }
-A.db.prices[scope]["4306"].ins = { 30, 12, -22, 2, -7, 6, 11, 4, 20, 12, 21, 195 }
+A.db.prices[scope]["12360"].ins = { 30, 92, 14, 1, -6, 5, 9, 3, 19, 8, 20, 455000, 447000, 431000, 472000 }
+A.db.prices[scope]["4306"].ins = { 30, 12, -22, 2, -7, 6, 11, 4, 20, 12, 21, 195, 207, 180, 215 }
 A.db.prices[scope]["4306"].minOther = 180
 A.db.prices[scope]["12360"].minOther = 401000
 A.db.chars = {
@@ -608,6 +608,10 @@ def render(path, crop=None):
                 continue
             if o["circle"]:
                 d.ellipse([x0, y0, x1, y1], fill=fill)
+            elif o["tex"] is not None and not c and str(o["tex"]).lower().endswith("ultimateah\\logo"):
+                logo = Image.open(os.path.join(HERE, "media", "logo.png")).convert("RGBA")
+                logo = logo.resize((max(1, int(round(x1 - x0))), max(1, int(round(y1 - y0)))), Image.LANCZOS)
+                img.paste(logo, (int(round(x0)), int(round(y0))), logo)
             elif o["tex"] is not None and not c:
                 d.rectangle([x0, y0, x1, y1], fill=fill)
                 d.rectangle([x0 + 2, y0 + 2, x1 - 2, y1 - 2], outline=(255, 255, 255, 40))
