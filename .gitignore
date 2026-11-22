@@ -19,3 +19,6 @@ _backup/
 
 # rejected logo candidates from the design run
 media/candidates/
+
+# local runs of the server scan
+server_data/

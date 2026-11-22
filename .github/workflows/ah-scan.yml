@@ -1,0 +1,89 @@
+name: AH scan
+
+# Scans every Forever auction house once an hour and publishes the result as files of the "data" release:
+#   <region>-<house>.lua.gz  what the addon loads (ah_api.py downloads it)
+#   history.db.gz            the SQLite database (30 days)
+#   state-*.json.gz          the previous snapshots, needed to see what was sold
+# Needs the repository secrets BLIZZARD_CLIENT_ID and BLIZZARD_CLIENT_SECRET.
+
+on:
+  schedule:
+    # Blizzard publishes new auction data at about :23 past every hour. GitHub often starts scheduled
+    # jobs late, so there are two tries an hour; a try that finds nothing new ends after a few requests.
+    - cron: "34,54 * * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Scan even if Blizzard's data is unchanged"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ah-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BLIZZARD_CLIENT_ID: ${{ secrets.BLIZZARD_CLIENT_ID }}
+      BLIZZARD_CLIENT_SECRET: ${{ secrets.BLIZZARD_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the API keys
+        id: keys
+        run: |
+          if [ -z "$BLIZZARD_CLIENT_ID" ] || [ -z "$BLIZZARD_CLIENT_SECRET" ]; then
+            echo "::warning::No scan: add the repository secrets BLIZZARD_CLIENT_ID and BLIZZARD_CLIENT_SECRET."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Has Blizzard published new data?
+        id: probe
+        if: steps.keys.outputs.ready == 'true'
+        run: |
+          mkdir -p data
+          if ! gh release view data >/dev/null 2>&1; then
+            gh release create data --title "Auction data" --prerelease --latest=false \
+              --notes "Hourly auction house data for the Ultimate AH addon, written by ah_server.py. Auction data: Blizzard Entertainment, through the Battle.net Game Data API. Nothing older than 30 days is kept."
+          fi
+          gh release view data --json assets --jq '.assets[].name' > assets.txt
+          if grep -qx "index.json" assets.txt; then
+            gh release download data --dir data --pattern "index.json" --clobber
+          fi
+          python ah_server.py probe --dir data
+
+      # a failed download must stop the job: scanning without the database would publish an empty one
+      - name: Download the database and the previous snapshots
+        if: steps.probe.outputs.changed == 'true' || inputs.force
+        run: |
+          if grep -qx "history.db.gz" assets.txt; then
+            gh release download data --dir data --pattern "history.db.gz" --clobber
+          fi
+          if grep -q "^state-.*\.json\.gz$" assets.txt; then
+            gh release download data --dir data --pattern "state-*.json.gz" --clobber
+          fi
+
+      - name: Scan
+        if: steps.probe.outputs.changed == 'true' || inputs.force
+        run: python ah_server.py run --dir data ${{ inputs.force && '--force' || '' }}
+
+      - name: Publish
+        if: steps.probe.outputs.changed == 'true' || inputs.force
+        run: |
+          python ah_server.py info --dir data
+          gh release upload data data/state-*.json.gz data/history.db.gz --clobber
+          gh release upload data data/*.lua.gz --clobber
+          gh release upload data data/index.json --clobber

@@ -9,7 +9,13 @@ The addon reads that file at login or /reload.
     python ah_api.py detect     find which auction house is yours (compares with your in-game scan)
     python ah_api.py scan       one scan
     python ah_api.py auto       detect if needed, then scan (this is what the hourly scheduled task runs)
+    python ah_api.py fetch      no API key needed: download the data file the project's server scan publishes
     python ah_api.py status     what the last scan stored
+
+Without credentials, detect / auto / fetch use the files the server scan (ah_server.py, an hourly job in
+the project's repository) publishes for every Forever auction house. With credentials the scan is your
+own, and the server's files add what a PC that is not always on cannot have: a price point for every
+day and a sold-per-day figure from every hour.
 
 Credentials: blizzard_api.json next to this script (client_id / client_secret from
 https://develop.battle.net/access/clients), or the environment variables
@@ -46,6 +52,8 @@ MIN_COVER = 3000           # seconds of compared scans needed before sale rates 
                            # snapshots are a few seconds short of 3600 s apart, so not a full hour
 # the least time an auction in each bracket still has left; one that vanished sooner was
 # bought or cancelled, it cannot have run out
+# where the server scan publishes its files; "server": "" in blizzard_api.json turns it off
+SERVER = "https://github.com/mhenrichsen/UltimateAH/releases/download/data"
 MIN_LEFT = {"SHORT": 0, "MEDIUM": 1800, "LONG": 7200, "VERY_LONG": 43200}
 TL_CODE = {"SHORT": 0, "MEDIUM": 1, "LONG": 2, "VERY_LONG": 3}
 TL_MIN = [0, 1800, 7200, 43200]
@@ -238,10 +246,13 @@ def item_key(item):
     return str(iid)
 
 
-def fetch_house(api, ruleset, house, total=True):
-    """-> { "t", "modified", "auctions": {id: [key, qty, unit, tl, commodity]} } or None on failure"""
+def fetch_house(api, ruleset, house, total=True, since=None):
+    """-> { "t", "modified", "auctions": {id: [key, qty, unit, tl, commodity]} }.
+    With since (the Last-Modified of the data you already have): None when nothing newer exists."""
     base = "/data/wow/ruleset/%s/auctions/%s" % (ruleset, house)
-    status, data, h = api.get(base)
+    status, data, h = api.get(base, since=since)
+    if status == 304:
+        return None
     if status != 200 or data is None:
         raise ApiError("auction house %s answered HTTP %s" % (house, status))
     out = {}
@@ -468,6 +479,7 @@ def lua_num(x):
 
 def write_lua(path, meta, items):
     lines = ["-- written by ah_api.py (UltimateAH auto scan); do not edit",
+             "-- auction data: Blizzard Entertainment, through the Battle.net Game Data API",
              "UltimateAH_ApiData = {"]
     for k, v in meta.items():
         lines.append("  %s = %s," % (k, json.dumps(v) if isinstance(v, str) else lua_num(v)))
@@ -485,6 +497,158 @@ def write_lua(path, meta, items):
     with open(tmp, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(lines) + "\n")
     os.replace(tmp, path)
+
+
+# ---------------------------------------------------------------------------
+# the server scan's published files (no API key needed)
+# ---------------------------------------------------------------------------
+def fetch_url(url, timeout=120):
+    """-> bytes, or None when the file is not there (tests replace this)"""
+    req = urllib.request.Request(url, headers={"User-Agent": "UltimateAH"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read()
+    except (urllib.error.URLError, OSError):
+        return None
+
+
+def server_base(cfg):
+    base = cfg.get("server")
+    return (SERVER if base is None else base).rstrip("/")
+
+
+def server_index(cfg):
+    """what the server scan has: {"houses": [{region, house, faction, t, auctions, items, soldHours, file}]}"""
+    base = server_base(cfg)
+    body = fetch_url(base + "/index.json") if base else None
+    try:
+        return json.loads(body.decode("utf-8")) if body else None
+    except ValueError:
+        return None
+
+
+def server_file(cfg, region, house):
+    """the data file of one house as text (the ApiData.lua format), or None"""
+    base = server_base(cfg)
+    body = fetch_url("%s/%s-%s.lua.gz" % (base, region, house)) if base else None
+    if not body:
+        return None
+    try:
+        return gzip.decompress(body).decode("utf-8")
+    except (OSError, EOFError, ValueError):
+        return None
+
+
+def parse_data(data):
+    """a data file -> (meta, {key: [min, market, qty, auctions, top100, lowestOther, soldPerDay, day, market, min, ...]})"""
+    meta, items = {}, {}
+    for line in data.split("\n"):
+        line = line.strip()
+        if line.startswith('["'):
+            key, _, rest = line[2:].partition('"]="')
+            items[key] = [float(x) if "." in x else int(x) for x in rest.rstrip('",').split(",") if x]
+        elif " = " in line and not items:
+            k, _, v = line.rstrip(",").partition(" = ")
+            if k.isidentifier() and v and v != "{":
+                try:
+                    meta[k] = json.loads(v)
+                except ValueError:
+                    pass
+    return meta, items
+
+
+def cmd_fetch(cfg, out=None):
+    """download the server scan's file of your auction house into the addon folder"""
+    out = out or OUT
+    region, house = cfg["region"].lower(), cfg.get("house")
+    if not house:
+        raise ApiError("no auction house chosen yet: run  python ah_api.py detect")
+    txt = server_file(cfg, region, house)
+    if not txt:
+        raise ApiError("the server has no data file for auction house %s-%s" % (region, house))
+    meta, items = parse_data(txt)
+    if meta.get("house") != house or not items:
+        raise ApiError("the server's file for auction house %s-%s is not readable" % (region, house))
+    last = read_state("last.json", None)
+    if last and last.get("t", 0) >= meta.get("t", 0) and os.path.exists(out):
+        log("no newer data on the server (its last scan: %s)" % time.strftime("%H:%M", time.localtime(meta.get("t", 0))))
+        return 0
+    tmp = out + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write(txt)
+    os.replace(tmp, out)
+    write_state("last.json", {"t": meta.get("t", 0), "house": house, "auctions": meta.get("auctions", 0),
+                              "items": len(items), "sold_units": 0, "cover_hours": meta.get("soldHours", 0),
+                              "source": "server"})
+    log("server data loaded: house %s, %d auctions, %d items, sale rates from %.1f h of data" % (
+        house, meta.get("auctions", 0), len(items), meta.get("soldHours", 0)))
+    return 0
+
+
+def game_faction(db, faction=None):
+    if faction:
+        return faction
+    counts = collections.Counter()
+    for scope, p in (db.prices.items() if db.prices else []):
+        counts[str(scope).split(" ")[-1]] += len(list(p.keys()))
+    return counts.most_common(1)[0][0] if counts else "Alliance"
+
+
+def cmd_detect_server(cfg, faction=None):
+    """find your auction house without an API key: compare the server's files with your in-game scan"""
+    db = saved_variables()
+    if db is None:
+        raise ApiError("cannot read UltimateAH's saved data (log out or /reload once after a full scan)")
+    faction = game_faction(db, faction)
+    game = ingame_prices(db, faction)
+    if len(game) < 50:
+        raise ApiError("too little in-game data to compare with: do a Full Scan in the game, /reload, and retry")
+    idx = server_index(cfg)
+    if not idx or not idx.get("houses"):
+        raise ApiError("the server's list of auction houses is not reachable")
+    region, best = cfg["region"].lower(), None
+    for h in idx["houses"]:
+        if h.get("region") != region or h.get("faction") != faction:
+            continue
+        txt = server_file(cfg, region, h["house"])
+        if not txt:
+            continue
+        _, items = parse_data(txt)
+        both = [k for k in game if k in items and items[k][0] > 0]
+        hit = sum(1 for k in both if abs(items[k][0] - game[k]) <= 0.05 * game[k] + 1)
+        score = hit / max(len(both), 1) if len(both) >= 50 else 0
+        log("  house %s: %d/%d prices match" % (h["house"], hit, len(both)))
+        if best is None or score > best[0]:
+            best = (score, h["house"], h.get("ruleset"), hit, len(both))
+    if not best or best[0] <= 0.2:
+        raise ApiError("no auction house on the server matches your in-game prices well enough")
+    cfg["house"], cfg["ruleset"], cfg["faction"], cfg["buyout_is_total"] = best[1], best[2] or 1, faction, True
+    save_config(cfg)
+    log("your auction house: %s, %d of %d prices match - saved" % (best[1], best[3], best[4]))
+    return 0
+
+
+def server_overlay(cfg, region, house, t, items):
+    """give a local scan the server's history and sale rates: the server scans every hour, this PC
+    only while it is on. -> the server's soldHours, or None when its file is missing or stale"""
+    txt = server_file(cfg, region, house)
+    if not txt:
+        return None
+    meta, srv = parse_data(txt)
+    if meta.get("house") != house or abs(t - meta.get("t", 0)) > MAX_GAP:
+        return None
+    rates = (meta.get("soldHours") or 0) >= 1
+    for key, it in items.items():
+        v = srv.get(key)
+        if v and len(v) > 7:
+            it["h"] = v[7:]
+        if rates:
+            it["sold"] = v[6] if v and len(v) > 6 else 0
+    if rates:
+        for key, v in srv.items():
+            if key not in items and len(v) > 6 and v[6] > 0:
+                items[key] = {"min": 0, "mkt": 0, "qty": 0, "num": 0, "top": 0, "other": 0, "h": [], "sold": v[6]}
+    return meta.get("soldHours") or 0
 
 
 # ---------------------------------------------------------------------------
@@ -508,11 +672,7 @@ def cmd_detect(api, cfg, faction=None):
     db = saved_variables()
     if db is None:
         raise ApiError("cannot read UltimateAH's saved data (log out or /reload once after a full scan)")
-    if not faction:
-        counts = collections.Counter()
-        for scope, p in (db.prices.items() if db.prices else []):
-            counts[str(scope).split(" ")[-1]] += len(list(p.keys()))
-        faction = counts.most_common(1)[0][0] if counts else "Alliance"
+    faction = game_faction(db, faction)
     mine = my_auction_ids(db)
     game = ingame_prices(db, faction)
     if len(game) < 50 and not mine:
@@ -634,6 +794,11 @@ def cmd_scan(api, cfg, out=None, now=None, force=False):
 
     # the addon reads sale rates only when soldHours >= 1, so this must agree with `rates`
     sold_hours = max(1.0, round(cover / 3600.0, 1)) if rates else 0.0
+    srv_hours = server_overlay(cfg, api.region, house, t, items)
+    if srv_hours is not None:
+        log("history and sale rates taken from the server scan (%.0f h of data)" % srv_hours)
+        if srv_hours >= 1:
+            sold_hours = srv_hours
     meta = collections.OrderedDict(v=1, t=t, region=api.region, house=house,
                                    faction=cfg.get("faction") or faction_of(snap.get("name")),
                                    auctions=len(aucs), soldHours=sold_hours)
@@ -660,7 +825,7 @@ def cmd_status():
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="UltimateAH auto scans through Blizzard's API")
-    ap.add_argument("command", choices=["check", "detect", "scan", "auto", "status"])
+    ap.add_argument("command", choices=["check", "detect", "scan", "auto", "fetch", "status"])
     ap.add_argument("--faction", help="Alliance or Horde (detect: default is the one you scanned in-game)")
     ap.add_argument("--force", action="store_true", help="scan: write the data file even if Blizzard's data is unchanged")
     args = ap.parse_args(argv)
@@ -669,6 +834,13 @@ def main(argv=None):
     cfg = load_config()
     set_wow_dir(cfg.get("wow_dir"))
     try:
+        keyless = not (cfg["client_id"] and cfg["client_secret"])
+        if args.command == "fetch" or (keyless and args.command in ("detect", "auto")):
+            if args.command == "detect" or not cfg.get("house"):       # no API key: use the server's files
+                cmd_detect_server(cfg, args.faction)
+                if args.command == "detect":
+                    return 0
+            return cmd_fetch(cfg)
         api = Api(cfg)
         if args.command == "check":
             return cmd_check(api, cfg)

@@ -92,6 +92,7 @@ def items_of(d):
 tmp = tempfile.mkdtemp(prefix="altest_")
 ah_api.STATE = os.path.join(tmp, "state")
 ah_api.saved_variables = lambda: None
+ah_api.SERVER = ""                        # these tests are about the PC's own scan: no server files
 OUT = os.path.join(tmp, "ApiData.lua")
 cfg = {"client_id": "id", "client_secret": "secret", "region": "eu", "ruleset": 1, "house": 113,
        "buyout_is_total": True, "faction": "Alliance"}

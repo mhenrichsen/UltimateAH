@@ -18,7 +18,7 @@ layout code with sample data. Fonts and icons differ a little from the game.
   Settings pages, posting auctions from the Sell page, and loading API scan data. It is covered
   by 139 automated checks against a mocked game API and by the offline renders, but it has not
   been run in the live client yet. Treat 2.x as a beta.
-- The API scan script has been run against Blizzard's real API (EU, Alliance).
+- The API scan script and the server scan have been run against Blizzard's real API (EU).
 
 ## What is in here
 
@@ -26,9 +26,10 @@ layout code with sample data. Fonts and icons differ a little from the game.
 |---|---|
 | `UltimateAH/` | The addon. Copy this folder into `_forever_\Interface\AddOns`. Its [README](UltimateAH/README.md) describes every page and command. |
 | `ah_api.py` | Auto scans: downloads your auction house from Blizzard's Game Data API every hour and writes `ApiData.lua` for the addon. |
+| `ah_server.py` | Server scan: every Forever auction house, both factions, every hour, into a SQLite database. Runs as the GitHub job in `.github/workflows/ah-scan.yml`. |
 | `deploy.py` | Copies `UltimateAH/` into the game folder. |
 | `sync_accounts.py` | Merges the addon's saved data across WoW accounts on one PC. |
-| `test_*.py`, `tests_v2.py` | Tests: the addon's Lua runs in [lupa](https://pypi.org/project/lupa/) against a mocked WoW API. |
+| `test_*.py`, `tests_v2.py` | Tests: the addon's Lua runs in [lupa](https://pypi.org/project/lupa/) against a mocked WoW API; the scan scripts run against a fake Blizzard API. |
 | `render_ui.py` | Draws every page to a PNG without the game. |
 | `luacheck.py`, `uipass.py` | Syntax check and a search/replace helper. |
 | `media/` | The project logo and the script that draws it. |
@@ -42,9 +43,26 @@ The addon is also on CurseForge as a beta: https://www.curseforge.com/wow/addons
    (or run `python deploy.py`).
 2. Start the game, then `/uah` or the minimap button.
 
-## Auto scans through Blizzard's API (optional)
+## Auto scans (optional)
 
-An addon cannot reach the internet, so a small Python script does it from outside the game.
+An addon cannot reach the internet, so a small Python script does it from outside the game. There
+are two ways to use it.
+
+### Without an API key: the server's data
+
+An hourly job in this repository scans every Forever auction house in the EU region, Alliance and
+Horde, and publishes one data file per house (see [The server scan](#the-server-scan)).
+
+1. Do a Full Scan in the game once, then `/reload`.
+2. `python ah_api.py detect` finds which auction house is yours by comparing the server's files with
+   your scan. `python ah_api.py fetch` downloads your house's file into the addon folder.
+3. Schedule `python ah_api.py auto` hourly, for example with Windows Task Scheduler.
+4. The addon loads the data at login or `/reload`. `/uah api` shows what it loaded.
+
+### With your own API key
+
+Your PC scans your auction house itself, which also tells the addon which auctions are yours. The
+server's file still adds the price history and sale rates of the hours your PC was off.
 
 1. Create an API client at https://develop.battle.net/access/clients.
 2. Copy `blizzard_api.example.json` to `blizzard_api.json` and fill in the client ID and secret.
@@ -59,6 +77,26 @@ Needs Python 3.10+ and `pip install lupa` (used to read the addon's saved data).
 Blizzard has not documented the Forever API. The script uses what the community found by probing:
 namespace `dynamic-forever-<region>`, auctions under `/data/wow/ruleset/<id>/auctions/<house>`.
 It may break when Blizzard changes things.
+
+### The server scan
+
+`ah_server.py` is the same scan for a machine that is always on. `.github/workflows/ah-scan.yml` runs
+it twice an hour (Blizzard publishes new data once an hour, at about :23) and stores everything as
+files of the repository's `data` release:
+
+| File | What it is |
+|---|---|
+| `eu-<house>.lua.gz` | What the addon loads: current prices, 14 days of daily prices, units sold per day. |
+| `history.db.gz` | A SQLite database: one row per auction house, item and day with the mean market price, the lowest buyout, the listed quantity and the units sold. |
+| `state-eu-<house>.json.gz` | The previous snapshot of each house, needed to see what was sold. |
+| `index.json` | The houses and the time of their last scan. |
+
+To run it in your own fork, add the repository secrets `BLIZZARD_CLIENT_ID` and
+`BLIZZARD_CLIENT_SECRET` (Settings, Secrets and variables, Actions). Anywhere else:
+`python ah_server.py run --dir <folder>` once an hour with the two environment variables set.
+
+Blizzard's API terms allow keeping API data for 30 days at most, so the database drops anything
+older. Auction data: Blizzard Entertainment, through the Battle.net Game Data API.
 
 ### Units sold per day
 
@@ -75,6 +113,7 @@ python luacheck.py
 python test_tracker.py
 python test_ui.py
 python test_api.py
+python test_server.py
 python test_sell.py
 python render_ui.py renders
 ```
