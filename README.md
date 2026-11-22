@@ -31,8 +31,12 @@ layout code with sample data. Fonts and icons differ a little from the game.
 | `test_*.py`, `tests_v2.py` | Tests: the addon's Lua runs in [lupa](https://pypi.org/project/lupa/) against a mocked WoW API. |
 | `render_ui.py` | Draws every page to a PNG without the game. |
 | `luacheck.py`, `uipass.py` | Syntax check and a search/replace helper. |
+| `media/` | The project logo and the script that draws it. |
 
 ## Install the addon
+
+The addon is also on CurseForge as a beta: https://www.curseforge.com/wow/addons/ultimate-ah
+(the page appears once CurseForge's moderators have approved it).
 
 1. Copy the `UltimateAH` folder into `World of Warcraft\_forever_\Interface\AddOns`
    (or run `python deploy.py`).
