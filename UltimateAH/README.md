@@ -57,8 +57,8 @@ the panel next to the auction house. The window has its own dark theme: a sideba
 
 ## Auto scans (Blizzard's API) and "Sold/day"
 An addon cannot reach the internet, so `ah_api.py` (from the addon's GitHub repository, https://github.com/mhenrichsen/UltimateAH) does it from
-outside the game. It downloads your whole auction house from Blizzard's Game Data API, computes the
-same prices as a Full Scan, and writes `ApiData.lua` into this folder. The addon loads it at login
+outside the game. It gets your whole auction house from Blizzard's Game Data API, with the same
+prices as a Full Scan, and writes `ApiData.lua` into this folder. The addon loads it at login
 or `/reload` (`/uah api` shows what is loaded). No visit to the auction house needed.
 
 Comparing one hourly scan with the next also gives what the game never shows: **how many units of
@@ -66,7 +66,13 @@ each item are sold per day** (the Sold/day column on Prices, and a tooltip line)
 An auction that vanished counts as sold when it still had time left and no cheaper auction of the
 same item stayed behind; a commodity listing whose quantity dropped was partly bought.
 
-Setup, once:
+Setup without an API key (EU region): the project's server scans every Forever auction house each
+hour, and the script downloads your house's file from it.
+1. Do a Full Scan in the game once, then `/reload`.
+2. `python ah_api.py auto` (the first run finds which auction house is yours by comparing with
+   that scan), then let a scheduled task run it every hour.
+
+Setup with your own API key (any region; your PC does the scan, which also knows your own auctions):
 1. Create an API client at https://develop.battle.net/access/clients and put its client ID and
    secret into `blizzard_api.json` next to the script.
 2. `python ah_api.py check` (credentials work?), then `python ah_api.py detect` (finds which
