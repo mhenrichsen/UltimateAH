@@ -294,30 +294,48 @@ def host_line():
 def make_handler(folder):
     class Handler(http.server.BaseHTTPRequestHandler):
         server_version = "UltimateAH"
+        timeout = 30                                      # a stalled client must not hold a thread forever
 
-        def answer(self, body_only=True):
+        def answer(self, send_body=True):
             name = self.path.split("?", 1)[0].lstrip("/") or "index.json"
             if name == "healthz":
                 idx = read_index(folder)
                 body = json.dumps({"ok": True, "updated": idx.get("updated", 0), "houses": len(idx.get("houses", []))}).encode()
-                return self.reply(200, body, "application/json", body_only)
-            path = os.path.join(folder, name)
-            if not PUBLIC.match(name) or not os.path.isfile(path):
-                return self.reply(404, b"not found\n", "text/plain", body_only)
-            with open(path, "rb") as f:
-                body = f.read()
-            self.reply(200, body, TYPES.get(os.path.splitext(name)[1], "application/octet-stream"), body_only,
-                       email.utils.formatdate(os.path.getmtime(path), usegmt=True))
+                return self.reply(200, body, "application/json", send_body)
+            try:
+                f = open(os.path.join(folder, name), "rb") if PUBLIC.match(name) else None
+            except OSError:
+                f = None
+            if not f:
+                return self.reply(404, b"not found\n", "text/plain", send_body)
+            with f:                                       # an open file stays whole while a scan replaces it
+                st = os.fstat(f.fileno())
+                mtime = int(st.st_mtime)
+                modified = email.utils.formatdate(mtime, usegmt=True)
+                try:
+                    since = email.utils.parsedate_to_datetime(self.headers.get("If-Modified-Since") or "").timestamp()
+                except (TypeError, ValueError, IndexError):
+                    since = None
+                if since is not None and mtime <= since:
+                    return self.head(304, None, None, modified)
+                self.head(200, st.st_size, TYPES.get(os.path.splitext(name)[1], "application/octet-stream"), modified)
+                if send_body:
+                    shutil.copyfileobj(f, self.wfile)     # streamed: the database file grows to tens of MB
 
-        def reply(self, status, body, ctype, send_body, modified=None):
+        def head(self, status, length, ctype, modified=None):
             self.send_response(status)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(len(body)))
+            if ctype:
+                self.send_header("Content-Type", ctype)
+            if length is not None:
+                self.send_header("Content-Length", str(length))
             self.send_header("Cache-Control", "public, max-age=300")
             self.send_header("X-Data-Source", SOURCE)
             if modified:
                 self.send_header("Last-Modified", modified)
             self.end_headers()
+
+        def reply(self, status, body, ctype, send_body):
+            self.head(status, len(body), ctype)
             if send_body:
                 self.wfile.write(body)
 

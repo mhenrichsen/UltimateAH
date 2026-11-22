@@ -244,8 +244,11 @@ lua.execute(open(OUT2, encoding="utf-8").read())
 d = lua.globals().UltimateAH_ApiData
 check("keyless fetch: the file is valid Lua for the addon", d is not None and d.house == 113 and d.faction == "Horde" and d["items"]["1000"] is not None)
 size = os.path.getsize(OUT2)
+del asked[:]
 ah_api.cmd_fetch(c, out=OUT2)
 check("keyless fetch: nothing rewritten when the server has nothing newer", os.path.getsize(OUT2) == size)
+check("keyless fetch: the small list answers it, no data file is downloaded",
+      [u.rsplit("/", 1)[1] for u in asked] == ["index.json"], asked)
 try:
     ah_api.cmd_fetch(dict(c, house=999), out=OUT2)
     check("keyless fetch: an unknown house is an error", False)
@@ -268,6 +271,41 @@ ah_api.STATE = os.path.join(tmp, "pc_state3")
 ah_api.cmd_scan(ah_api.Api(pc2, opener=fake5), pc2, out=OUT3, now=T1 + 5 * 3600)
 m4, i4 = ah_api.parse_data(open(OUT3, encoding="utf-8").read())
 check("overlay: a stale server file is ignored", m4.get("soldHours") == 0 and i4["4306"][6] == 0, m4)
+
+# 7. the service's HTTP side: only the public files, streamed, with 304 and without the private ones
+httpd = ah_server.cmd_serve(DIR3, 0, rounds=0)
+BASE = "http://127.0.0.1:%d" % httpd.server_address[1]
+
+
+def http(path, method="GET", headers=None):
+    req = urllib.request.Request(BASE + path, method=method, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, r.headers, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers, e.read()
+
+
+st, hd, body = http("/eu-113.lua.gz")
+on_disk = open(os.path.join(DIR3, "eu-113.lua.gz"), "rb").read()
+check("http: a data file arrives whole", st == 200 and body == on_disk and hd.get("Content-Length") == str(len(on_disk)), (st, len(body)))
+check("http: it names Blizzard as the source", "Blizzard" in (hd.get("X-Data-Source") or ""), dict(hd))
+st2, hd2, body2 = http("/eu-113.lua.gz", headers={"If-Modified-Since": hd.get("Last-Modified")})
+check("http: unchanged since the last download is a 304 without a body", st2 == 304 and body2 == b"", (st2, len(body2)))
+st3, _, _ = http("/eu-113.lua.gz", headers={"If-Modified-Since": "Thu, 01 Jan 2015 00:00:00 GMT"})
+st4, _, _ = http("/eu-113.lua.gz", headers={"If-Modified-Since": "not a date"})
+check("http: an older or unreadable date gets the file", st3 == 200 and st4 == 200, (st3, st4))
+st, hd, body = http("/eu-113.lua.gz", method="HEAD")
+check("http: HEAD gives the size and no body", st == 200 and body == b"" and hd.get("Content-Length") == str(len(on_disk)), (st, len(body)))
+st, _, body = http("/")
+check("http: / is the list of houses", st == 200 and json.loads(body.decode()).get("houses"), st)
+st, _, body = http("/healthz")
+check("http: healthz answers", st == 200 and json.loads(body.decode()).get("ok") is True, (st, body))
+private = ["/state-eu-113.json.gz", "/history.db", "/scan.log", "/../ah_api.py", "/eu-113.lua.gz/../history.db", "/%2e%2e/x"]
+check("http: private files and paths outside the folder are not handed out",
+      all(http(p)[0] == 404 for p in private), [(p, http(p)[0]) for p in private])
+check("http: the database download is there", http("/history.db.gz", method="HEAD")[0] == 200)
+httpd.shutdown()
 
 print()
 print("%d failure(s)" % fails)

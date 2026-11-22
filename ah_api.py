@@ -567,14 +567,19 @@ def cmd_fetch(cfg, out=None):
         raise ApiError("no auction house chosen yet: run  python ah_api.py detect")
     if not server_base(cfg):
         raise ApiError('no server scan configured: set "server" in blizzard_api.json to its address')
+    last = read_state("last.json", None)
+    entry = next((h for h in (server_index(cfg) or {}).get("houses", [])
+                  if h.get("region") == region and h.get("house") == house), None)
+    if entry and last and last.get("house") == house and last.get("t", 0) >= entry.get("t", 0) and os.path.exists(out):
+        log("no newer data on the server (its last scan: %s)" % time.strftime("%H:%M", time.localtime(entry.get("t", 0))))
+        return 0                                          # the small list answered it: no data file downloaded
     txt = server_file(cfg, region, house)
     if not txt:
         raise ApiError("the server has no data file for auction house %s-%s" % (region, house))
     meta, items = parse_data(txt)
     if meta.get("house") != house or not items:
         raise ApiError("the server's file for auction house %s-%s is not readable" % (region, house))
-    last = read_state("last.json", None)
-    if last and last.get("t", 0) >= meta.get("t", 0) and os.path.exists(out):
+    if last and last.get("house") == house and last.get("t", 0) >= meta.get("t", 0) and os.path.exists(out):
         log("no newer data on the server (its last scan: %s)" % time.strftime("%H:%M", time.localtime(meta.get("t", 0))))
         return 0
     tmp = out + ".tmp"

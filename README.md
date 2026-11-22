@@ -16,7 +16,7 @@ layout code with sample data. Fonts and icons differ a little from the game.
   checked in the game.
 - The 2.x work has only been tested outside the game so far: the new look, the Watch, Sell and
   Settings pages, posting auctions from the Sell page, and loading API scan data. It is covered
-  by 168 automated checks against a mocked game API and by the offline renders, but it has not
+  by 178 automated checks against a mocked game API and by the offline renders, but it has not
   been run in the live client yet. Treat 2.x as a beta.
 - The API scan script and the server scan have been run against Blizzard's real API (EU).
 
