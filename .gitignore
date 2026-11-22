@@ -22,3 +22,6 @@ media/candidates/
 
 # local runs of the server scan
 server_data/
+
+# Coolify API token for deploying the server scan: never commit
+coolify_api.json

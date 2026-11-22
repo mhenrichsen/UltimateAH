@@ -6,6 +6,9 @@ always there (the hourly GitHub job in .github/workflows/ah-scan.yml, or any ser
     python ah_server.py probe --dir DIR     has Blizzard published new data? (a few small requests)
     python ah_server.py run   --dir DIR     scan every house, update the database, write the data files
     python ah_server.py info  --dir DIR     what the database holds
+    python ah_server.py serve --dir DIR     stay running: scan whenever Blizzard has new data and
+                                            hand out the data files over HTTP (this is what the
+                                            Docker image runs; put HTTPS in front of it)
 
 Everything lives in DIR:
 
@@ -22,12 +25,16 @@ database. Auction data: Blizzard Entertainment, through the Battle.net Game Data
 """
 import argparse
 import collections
+import email.utils
 import gzip
+import http.server
 import json
 import os
+import re
 import shutil
 import sqlite3
 import sys
+import threading
 import time
 
 import ah_api
@@ -261,9 +268,105 @@ def cmd_info(folder):
     return 0
 
 
+# ---------------------------------------------------------------------------
+# serve: the scan loop plus a small read-only file server
+# ---------------------------------------------------------------------------
+# only these leave the folder: the snapshots (state-*) and the log stay private
+PUBLIC = re.compile(r"^(index\.json|[a-z]{2}-\d+\.lua\.gz|history\.db\.gz)$")
+TYPES = {".json": "application/json", ".gz": "application/gzip"}
+
+
+def host_line():
+    """one log line about the machine: how much room this service has"""
+    parts = ["%s cpus" % os.cpu_count()]
+    try:
+        parts.append("load %s" % " ".join("%.2f" % x for x in os.getloadavg()))
+    except (OSError, AttributeError):
+        pass
+    try:
+        mem = {}
+        with open("/proc/meminfo", encoding="ascii") as f:
+            for line in f:
+                k, _, v = line.partition(":")
+                mem[k] = int(v.split()[0])
+        parts.append("memory %d of %d MB free" % (mem["MemAvailable"] // 1024, mem["MemTotal"] // 1024))
+    except (OSError, KeyError, ValueError, IndexError):
+        pass
+    return ", ".join(parts)
+
+
+def make_handler(folder):
+    class Handler(http.server.BaseHTTPRequestHandler):
+        server_version = "UltimateAH"
+
+        def answer(self, body_only=True):
+            name = self.path.split("?", 1)[0].lstrip("/") or "index.json"
+            if name == "healthz":
+                idx = read_index(folder)
+                body = json.dumps({"ok": True, "updated": idx.get("updated", 0), "houses": len(idx.get("houses", []))}).encode()
+                return self.reply(200, body, "application/json", body_only)
+            path = os.path.join(folder, name)
+            if not PUBLIC.match(name) or not os.path.isfile(path):
+                return self.reply(404, b"not found\n", "text/plain", body_only)
+            with open(path, "rb") as f:
+                body = f.read()
+            self.reply(200, body, TYPES.get(os.path.splitext(name)[1], "application/octet-stream"), body_only,
+                       email.utils.formatdate(os.path.getmtime(path), usegmt=True))
+
+        def reply(self, status, body, ctype, send_body, modified=None):
+            self.send_response(status)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=300")
+            self.send_header("X-Data-Source", SOURCE)
+            if modified:
+                self.send_header("Last-Modified", modified)
+            self.end_headers()
+            if send_body:
+                self.wfile.write(body)
+
+        def do_GET(self):
+            self.answer(True)
+
+        def do_HEAD(self):
+            self.answer(False)
+
+        def log_message(self, fmt, *args):
+            pass                                          # the scan log is the log
+
+    return Handler
+
+
+def cmd_serve(folder, port, interval=300, rounds=None):
+    os.makedirs(folder, exist_ok=True)
+    httpd = http.server.ThreadingHTTPServer(("0.0.0.0", port), make_handler(folder))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    log("serving %s on port %d; this machine: %s" % (folder, httpd.server_address[1], host_line()))
+    n = 0
+    while rounds is None or n < rounds:
+        n += 1
+        cfg = dict(ah_api.load_config(), region=REGION)
+        if not (cfg["client_id"] and cfg["client_secret"]):
+            log("no API keys: set BLIZZARD_CLIENT_ID and BLIZZARD_CLIENT_SECRET")
+        else:
+            try:
+                if cmd_probe(folder, cfg=cfg):
+                    cmd_run(folder, cfg=cfg)
+                    log("this machine: %s" % host_line())
+            except ApiError as e:
+                log("failed:", e)
+            except Exception as e:                         # a bad hour must not end the service
+                log("error:", repr(e))
+        if rounds is None or n < rounds:
+            time.sleep(interval)
+    return httpd
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="UltimateAH server scan: all Forever auction houses into a database")
-    ap.add_argument("command", choices=["probe", "run", "info"])
+    ap.add_argument("command", choices=["probe", "run", "info", "serve"])
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")), help="serve: the HTTP port")
+    ap.add_argument("--interval", type=int, default=300, help="serve: seconds between checks for new data")
     ap.add_argument("--dir", default=os.path.join(ah_api.HERE, "server_data"), help="folder for the database and the files")
     ap.add_argument("--force", action="store_true", help="run: scan even if Blizzard's data is unchanged")
     args = ap.parse_args(argv)
@@ -274,6 +377,9 @@ def main(argv=None):
             return 0
         if args.command == "info":
             return cmd_info(args.dir)
+        if args.command == "serve":
+            cmd_serve(args.dir, args.port, args.interval)
+            return 0
         return cmd_run(args.dir, force=args.force)
     except ApiError as e:
         log("failed:", e)

@@ -6,11 +6,12 @@ name: AH scan
 #   state-*.json.gz          the previous snapshots, needed to see what was sold
 # Needs the repository secrets BLIZZARD_CLIENT_ID and BLIZZARD_CLIENT_SECRET.
 
+# The project's own data comes from the always-on service (Dockerfile, `ah_server.py serve`), so this
+# job only runs when started by hand. To use it as your scanner in a fork, add a schedule:
+#
+#   schedule:
+#     - cron: "34,54 * * * *"    # Blizzard publishes at about :23 past; GitHub often starts late
 on:
-  schedule:
-    # Blizzard publishes new auction data at about :23 past every hour. GitHub often starts scheduled
-    # jobs late, so there are two tries an hour; a try that finds nothing new ends after a few requests.
-    - cron: "34,54 * * * *"
   workflow_dispatch:
     inputs:
       force:
