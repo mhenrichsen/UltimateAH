@@ -82,6 +82,52 @@ CREATE TABLE IF NOT EXISTS model (house INTEGER PRIMARY KEY, day INTEGER, a REAL
 """
 
 
+HOURLY_DAYS = 14                                      # hour-by-hour prices kept for the hour-ahead forecasts
+HOURLY_MIN = 2                                        # auctions an item needs for its hour to be kept
+# a file of its own (hourly.db), not handed out: the scan writes it, ah_ml.py learns from it
+HOURLY_SCHEMA = """
+-- a small number per house and item, so that an hour is six columns of numbers
+CREATE TABLE IF NOT EXISTS item (house INTEGER NOT NULL, key TEXT NOT NULL, id INTEGER NOT NULL,
+  PRIMARY KEY (house, key)) WITHOUT ROWID;
+-- one row per house and scan. hour = t / 3600; v = zlib of 6 x n little-endian int32: the items' ids,
+-- market price, lowest buyout, units listed, auctions, units sold since the scan before
+CREATE TABLE IF NOT EXISTS hour (house INTEGER NOT NULL, hour INTEGER NOT NULL, t INTEGER NOT NULL,
+  n INTEGER NOT NULL, v BLOB NOT NULL, PRIMARY KEY (house, hour)) WITHOUT ROWID;
+"""
+HOURLY_FIELDS = ("mkt", "min", "qty", "num")
+
+
+def archive_hour(folder, hk, t, table, sold):
+    """keep this scan's prices in the hour-by-hour archive -> (items kept, hours the house has there)"""
+    db = sqlite3.connect(os.path.join(folder, "hourly.db"))
+    try:
+        db.executescript(HOURLY_SCHEMA)
+        ids = dict(db.execute("SELECT key, id FROM item WHERE house = ?", (hk,)))
+        keys = [k for k, p in table.items() if p["num"] >= HOURLY_MIN and p["mkt"] > 0]
+        new = sorted(k for k in keys if k not in ids)
+        first = max(ids.values(), default=-1) + 1
+        for i, k in enumerate(new):
+            ids[k] = first + i
+        db.executemany("INSERT INTO item (house, key, id) VALUES (?, ?, ?)", [(hk, k, ids[k]) for k in new])
+        keys.sort(key=ids.get)
+        top = 2 ** 31 - 1
+        a = array.array("i", [ids[k] for k in keys])
+        for f in HOURLY_FIELDS:
+            a.extend(min(int(table[k][f]), top) for k in keys)
+        a.extend(min(int(sold[k][0]), top) if k in sold else 0 for k in keys)
+        if sys.byteorder == "big":
+            a.byteswap()
+        hour = int(t // 3600)
+        db.execute("INSERT OR REPLACE INTO hour (house, hour, t, n, v) VALUES (?, ?, ?, ?, ?)",
+                   (hk, hour, int(t), len(keys), zlib.compress(a.tobytes(), 6)))
+        db.execute("DELETE FROM hour WHERE house = ? AND hour <= ?", (hk, hour - HOURLY_DAYS * 24))
+        hours = db.execute("SELECT COUNT(*) FROM hour WHERE house = ?", (hk,)).fetchone()[0]
+        db.commit()
+    finally:
+        db.close()
+    return len(keys), hours
+
+
 def connect(folder):
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, "history.db")
@@ -409,6 +455,7 @@ def scan_house(api, db, folder, h, now=None, force=False):
         "min = CASE WHEN min IS NULL OR excluded.min < min THEN excluded.min ELSE min END, qty = excluded.qty",
         [(hk, day, key, p["mkt"], p["min"], p["qty"]) for key, p in table.items()])
     update_hours(db, hk, day, int(t % 86400 // 3600), table, sold)
+    n_kept, n_hours = archive_hour(folder, hk, t, table, sold)
     for tbl in ("daily", "cover"):
         db.execute("DELETE FROM %s WHERE house = ? AND day <= ?" % tbl, (hk, day - KEEP_DAYS))
     db.execute("DELETE FROM scan WHERE house = ? AND t <= ?", (hk, t - KEEP_DAYS * 86400))
@@ -433,14 +480,14 @@ def scan_house(api, db, folder, h, now=None, force=False):
                      "prices": {k: {"mkt": v["mkt"]} for k, v in table.items()}})
     db.commit()
     log("house %s %s: %d auctions, %d items, %d units sold since the last scan, sale rates from %.1f h; "
-        "%d day(s) of history, price patterns for %d items, forecast %s" % (
-            name, faction, len(aucs), len(table), n_sold, sold_hours, n_days, n_ins,
+        "%d day(s) and %d hour(s) of history, price patterns for %d items, forecast %s" % (
+            name, faction, len(aucs), len(table), n_sold, sold_hours, n_days, n_hours, n_ins,
             ("learned" if check["learned"] else "on" if check["on"] else "off") + (
                 " (error %.1f%% against %.1f%% for an unchanged price, %d checks)" % (
                     check["error"] * 100, check["unchanged"] * 100, check["checks"]) if check["checks"] >= FIT_MIN else "")))
     return {"region": region, "house": hid, "ruleset": RULESET, "faction": faction, "t": t,
             "modified": snap.get("modified"), "auctions": len(aucs), "items": len(table),
-            "soldHours": sold_hours, "days": n_days, "patterns": n_ins, "forecast": check,
+            "soldHours": sold_hours, "days": n_days, "hours": n_hours, "patterns": n_ins, "forecast": check,
             "learned": check["learned"], "file": name + ".lua.gz"}
 
 

@@ -3,6 +3,7 @@ a fake Blizzard API with several auction houses, two scans an hour apart, the da
 published files, and ah_api.py reading them without an API key."""
 import array
 import datetime
+import zlib
 import gzip
 import io
 import json
@@ -310,6 +311,8 @@ check("http: private files and paths outside the folder are not handed out",
       all(http(p)[0] == 404 for p in private), [(p, http(p)[0]) for p in private])
 check("http: the database download is there", http("/history.db.gz", method="HEAD")[0] == 200)
 check("http: no training report before the first training", http("/ml.json")[0] == 404)
+check("http: the hour-by-hour archive stays private", os.path.exists(os.path.join(DIR3, "hourly.db")) and http("/hourly.db")[0] == 404
+      and http("/hourly.db.gz")[0] == 404)
 with open(os.path.join(DIR3, "ml.json"), "w", encoding="utf-8") as f:
     f.write('{"t": 1}')
 check("http: the training report is handed out, the model file is not", http("/ml.json")[0] == 200 and http("/ml.pkl")[0] == 404)
@@ -465,6 +468,22 @@ con = sqlite3.connect(os.path.join(DIR4, "history.db"))
 check("month: nothing older than 30 days is kept", con.execute("SELECT MIN(day) FROM daily").fetchone()[0] == D0
       and con.execute("SELECT MIN(day) FROM hours").fetchone()[0] > D0 + 29 - ah_server.KEEP_DAYS)
 con.close()
+
+# the hour-by-hour archive behind the hour-ahead forecasts
+con = sqlite3.connect(os.path.join(DIR4, "hourly.db"))
+n, lo, hi = con.execute("SELECT COUNT(*), MIN(hour), MAX(hour) FROM hour").fetchone()
+last_hour = (D0 * 86400 + 23 * 60 + 719 * 3600) // 3600
+check("archive: the last 14 days hour by hour, nothing older", (n, lo, hi) == (336, last_hour - 335, last_hour) and entry["hours"] == 336, (n, lo, hi))
+v, cnt = con.execute("SELECT v, n FROM hour WHERE hour = ?", (hi,)).fetchone()
+arr = array.array("i")
+arr.frombytes(zlib.decompress(v))
+names = {i: k for k, i in con.execute("SELECT key, id FROM item")}
+row = {names[arr[j]]: tuple(arr[c * cnt + j] for c in range(1, 6)) for j in range(cnt)}
+con.close()
+check("archive: an hour holds every followed item once", cnt == len(row) == len(i4) and len(arr) == 6 * cnt, (cnt, len(row), len(i4)))
+check("archive: market price, lowest buyout, units and auctions as in the data file",
+      row["3000"][:4] == (i4["3000"][1], i4["3000"][0], i4["3000"][2], i4["3000"][3]), (row["3000"], i4["3000"][:4]))
+check("archive: the units sold in the hour are kept", row["4306"][4] > 0 and row["3000"][4] == 0, row["4306"])
 
 # the PC script with an API key passes the server's patterns on
 DIR2 = DIR4
